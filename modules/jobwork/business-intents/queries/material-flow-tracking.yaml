@@ -1,0 +1,118 @@
+intent_name: material_flow_tracking
+description: Track material flow comparing planned vs actual quantities for production monitoring and inventory reconciliation
+category: production_monitoring
+priority: high
+complexity: high
+
+trigger_patterns:
+  primary_phrases:
+    - "material flow status"
+    - "sent vs received quantities"
+    - "input output tracking"
+    - "material reconciliation"
+    - "production flow status"
+  
+  specific_phrases:
+    - "what's the material flow for jobwork"
+    - "show sent and received materials"
+    - "track input and output materials"
+    - "delivery challan vs GRN comparison"
+    - "inventory movement tracking"
+
+sql_template: |
+  SELECT 
+      j."JobworkId",
+      jli."LineItemType",
+      jli."ItemType",
+      jli."ItemId",
+      jli."Quantity" as "PlannedQty",
+      jli."Rate",
+      -- Materials sent via Delivery Challans (INPUT items)
+      COALESCE(
+          (SELECT SUM(dci."Quantity" - COALESCE(dci."ReturnedQuantity", 0))
+           FROM "JobworkLinkedResources" jlr
+           JOIN "DeliveryChallanItemDetails" dci ON dci."DeliveryChallanId" = jlr."LinkedResourceId"
+           JOIN "DeliveryChallans" dc ON dc."DeliveryChallanId" = jlr."LinkedResourceId"
+           WHERE jlr."JobworkId" = j."JobworkId" 
+             AND jlr."LinkedResourceType" = 'DeliveryChallan'
+             AND dc."Status" = 'Approved'
+             AND dc."IsActive" = true
+             AND dci."ItemId" = jli."ItemId"
+             AND dci."ItemType"::text = jli."ItemType"::text
+             AND dci."IsActive" = true), 0) as "ActualSent",
+      -- Materials received via GRNs (OUTPUT items)
+      COALESCE(
+          (SELECT SUM(gi."ReceivedQuantity" - COALESCE(gi."ReturnedQuantity", 0))
+           FROM "JobworkLinkedResources" jlr
+           JOIN "GRNItemDetails" gi ON gi."GRNId" = jlr."LinkedResourceId"
+           JOIN "GRNs" grn ON grn."GRNId" = jlr."LinkedResourceId"
+           WHERE jlr."JobworkId" = j."JobworkId" 
+             AND jlr."LinkedResourceType" = 'GRN'
+             AND grn."Status" = 'Approved'
+             AND grn."IsActive" = true
+             AND gi."ItemId" = jli."ItemId"
+             AND gi."ItemType"::text = jli."ItemType"::text
+             AND gi."IsActive" = true), 0) as "ActualReceived",
+      -- Calculate completion percentage
+      CASE 
+          WHEN jli."LineItemType" = 'Input' AND jli."Quantity" > 0 THEN
+              ROUND((COALESCE(sent_summary.total_sent, 0) / jli."Quantity") * 100, 2)
+          WHEN jli."LineItemType" = 'Output' AND jli."Quantity" > 0 THEN
+              ROUND((COALESCE(received_summary.total_received, 0) / jli."Quantity") * 100, 2)
+          ELSE 0
+      END as "CompletionPercent",
+      -- Item details for context
+      CASE 
+          WHEN jli."ItemType" = 'Style' THEN s."StyleCode"
+          WHEN jli."ItemType" = 'Fabric' THEN rm."Name"
+          ELSE 'Other Item'
+      END as "ItemDescription"
+  FROM "Jobworks" j
+  JOIN "JobworkLineItems" jli ON j."JobworkId" = jli."JobworkId"
+  LEFT JOIN "Styles" s ON jli."ItemType" = 'Style' AND jli."ItemId" = s."StyleId"
+  LEFT JOIN "RMVariations" rm ON jli."ItemType" = 'Fabric' AND jli."ItemId" = rm."RMVariationId"
+  WHERE j."JobworkId" = {jobwork_id}
+    AND j."IsActive" = true
+  ORDER BY jli."LineItemType", jli."ItemType", jli."ItemId"
+
+parameters:
+  - name: jobwork_id
+    type: integer
+    required: true
+    description: Specific jobwork ID to track material flow
+    extraction_hints: ["jobwork", "JW-", "job", "order"]
+
+output_format:
+  type: table
+  columns:
+    - JobworkId: "Jobwork identifier"
+    - LineItemType: "Input (sent) or Output (received)"
+    - ItemType: "Type of material (Style, Fabric, etc.)"
+    - ItemDescription: "Human-readable item name"
+    - PlannedQty: "Expected quantity"
+    - ActualSent: "Actual materials sent via delivery challans"
+    - ActualReceived: "Actual materials received via GRNs"
+    - CompletionPercent: "Percentage of planned quantity completed"
+
+business_rules:
+  - "Only approved delivery challans and GRNs are considered"
+  - "Returned quantities are subtracted from totals"
+  - "Completion percentage is calculated based on line item type"
+  - "Input items track sent quantities, output items track received quantities"
+
+performance_notes:
+  - "Complex subqueries may impact performance on large datasets"
+  - "Indexes on JobworkLinkedResources improve join performance"
+  - "Consider materialized views for frequently accessed data"
+
+usage_contexts:
+  - "Material flow dashboard"
+  - "Inventory reconciliation reports"
+  - "Production progress tracking"
+  - "Vendor delivery analysis"
+
+validation_rules:
+  - "JobworkId must exist and be active"
+  - "Material flow data depends on linked delivery challans and GRNs"
+
+tags: [material_tracking, inventory, production_monitoring, flow, reconciliation]

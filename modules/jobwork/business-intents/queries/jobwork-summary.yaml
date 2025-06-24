@@ -1,0 +1,114 @@
+intent_name: jobwork_summary
+description: Get summary of jobworks with filtering by date, vendor, status, and type for dashboard views and operational reporting
+category: dashboard
+priority: high
+complexity: medium
+
+trigger_patterns:
+  primary_phrases:
+    - "show me all active jobworks"
+    - "jobwork status summary"
+    - "list jobworks by vendor"
+    - "manufacturing orders overview"
+    - "production summary"
+  
+  filter_phrases:
+    - "jobworks from last month"
+    - "overdue jobworks"
+    - "approved jobworks"
+    - "cutting department jobworks"
+    - "vendor-wise jobwork report"
+
+sql_template: |
+  SELECT 
+      j."JobworkId",
+      j."Status",
+      j."CreationDate",
+      j."DeliveryDate",
+      j."Total",
+      j."IsFullfiled",
+      s."CompanyName" as "VendorName",
+      d."Name" as "DepartmentName",
+      jt."Name" as "JobworkType",
+      CASE 
+          WHEN j."DeliveryDate" < CURRENT_DATE AND j."Status" NOT IN ('Completed', 'Cancelled') 
+          THEN 'Overdue'
+          WHEN j."Status" = 'Completed' THEN 'Completed'
+          WHEN j."Status" = 'Approved' THEN 'In Progress'
+          ELSE j."Status"
+      END as "DisplayStatus"
+  FROM "Jobworks" j
+  LEFT JOIN "Suppliers" s ON j."SupplierId" = s."SupplierId"
+  LEFT JOIN "Departments" d ON j."DepartmentId" = d."DepartmentId"
+  LEFT JOIN "JobworkTypes" jt ON j."JobworkTypeId" = jt."JobworkTypeId"
+  WHERE j."IsActive" = true 
+    AND ({status} IS NULL OR j."Status" = {status})
+    AND ({start_date} IS NULL OR j."CreationDate" >= {start_date})
+    AND ({end_date} IS NULL OR j."CreationDate" <= {end_date})
+    AND ({vendor_name} IS NULL OR s."CompanyName" ILIKE '%{vendor_name}%')
+    AND ({department_name} IS NULL OR d."Name" ILIKE '%{department_name}%')
+  ORDER BY j."CreationDate" DESC
+
+parameters:
+  - name: status
+    type: string
+    required: false
+    values: [Draft, Confirmed, Approved, Cancelled, Completed]
+    description: Filter by specific jobwork status
+    extraction_hints: ["status", "approved", "completed", "draft", "cancelled"]
+  
+  - name: start_date
+    type: date
+    required: false
+    description: Start date for date range filtering
+    extraction_hints: ["from", "since", "after", "starting"]
+    
+  - name: end_date
+    type: date
+    required: false
+    description: End date for date range filtering
+    extraction_hints: ["to", "until", "before", "ending"]
+    
+  - name: vendor_name
+    type: string
+    required: false
+    description: Filter by vendor company name (partial match)
+    extraction_hints: ["vendor", "supplier", "company"]
+    
+  - name: department_name
+    type: string
+    required: false
+    description: Filter by department name (partial match)
+    extraction_hints: ["department", "internal", "in-house"]
+
+output_format:
+  type: table
+  columns:
+    - JobworkId: "Unique jobwork identifier"
+    - Status: "Current workflow status"
+    - CreationDate: "When jobwork was created"
+    - DeliveryDate: "Expected delivery date"
+    - Total: "Total amount"
+    - VendorName: "Supplier company name"
+    - DepartmentName: "Internal department name"
+    - JobworkType: "Type of manufacturing operation"
+    - DisplayStatus: "Business-friendly status with overdue detection"
+
+business_rules:
+  - "Only active jobworks are shown by default"
+  - "Overdue status is automatically calculated based on delivery date"
+  - "Either vendor or department information is shown, not both"
+  - "Date filtering is inclusive of boundary dates"
+
+performance_notes:
+  - "Query uses indexes on CreationDate, Status, and IsActive"
+  - "LEFT JOINs are optimized for optional vendor/department relationships"
+  - "ILIKE operations may be slower on large datasets"
+
+usage_contexts:
+  - "Main production dashboard"
+  - "Operational status reports"
+  - "Vendor performance overview"
+  - "Management summary reports"
+
+tags: [summary, listing, dashboard, filtering, operational]

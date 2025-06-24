@@ -1,0 +1,34 @@
+module: jobwork
+domain: Manufacturing
+business_owner: ProductionOps
+version: 1.0
+last_updated: 2025-06-23
+status: active
+description: Manufacturing workflow management system for outsourced production operations, material flow tracking, vendor performance monitoring, and quality control processes in the ERP system
+
+module_scope:
+  primary_purpose: Manage outsourced manufacturing operations and vendor relationships
+  key_workflows:
+    - Material flow tracking (input/output)
+    - Vendor performance evaluation
+    - Quality control monitoring
+    - Process milestone management
+    - Audit trail maintenance
+  
+business_value:
+  - Real-time production visibility
+  - Vendor performance optimization
+  - Quality assurance compliance
+  - Cost control and waste reduction
+  - Operational efficiency improvement
+
+technical_stack:
+  backend: Node.js/Express
+  database: PostgreSQL
+  orm: Sequelize
+  api_style: REST
+  authentication: JWT
+
+complexity_level: high
+maintenance_priority: critical
+documentation_completeness: 100%

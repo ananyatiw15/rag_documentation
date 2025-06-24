@@ -1,0 +1,268 @@
+core_entities:
+  - name: Jobworks
+    description: Primary entity storing jobwork orders with vendor assignments, financial details, and workflow status
+    table_type: primary
+    business_importance: critical
+    columns:
+      - name: JobworkId
+        type: INTEGER
+        constraints: [PRIMARY_KEY, AUTO_INCREMENT]
+        description: Unique identifier for each jobwork order
+        business_purpose: System-generated unique reference for tracking
+      - name: JobworkTypeId
+        type: INTEGER
+        constraints: [FOREIGN_KEY]
+        references: JobworkTypes.JobworkTypeId
+        description: Categorization (Cutting, Stitching, Packing, etc.)
+        business_purpose: Determines workflow type and default checklists
+      - name: CreationDate
+        type: DATE
+        constraints: [NOT_NULL]
+        description: Order creation timestamp for tracking and aging analysis
+        business_purpose: Used for aging reports and performance metrics
+      - name: SupplierId
+        type: INTEGER
+        constraints: [FOREIGN_KEY, NULLABLE]
+        references: Suppliers.SupplierId
+        description: External vendor performing the work
+        business_purpose: Vendor assignment for external manufacturing
+      - name: DepartmentId
+        type: INTEGER
+        constraints: [FOREIGN_KEY, NULLABLE]
+        references: Departments.DepartmentId
+        description: Internal department (alternative to supplier)
+        business_purpose: Internal department assignment for in-house work
+      - name: Status
+        type: ENUM
+        constraints: [NOT_NULL]
+        values: [Draft, Confirmed, Approved, Cancelled, Completed]
+        description: Current workflow status
+        business_purpose: Controls edit permissions and business rules
+      - name: Total
+        type: DOUBLE
+        description: Final total amount calculated from line items and adjustments
+        business_purpose: Financial tracking and vendor payments
+      - name: DeliveryDate
+        type: DATE
+        description: Expected completion/delivery date for scheduling
+        business_purpose: Used for overdue calculations and planning
+      - name: IsActive
+        type: BOOLEAN
+        default: true
+        description: Active status flag for soft delete mechanism
+        business_purpose: Data retention without hard deletion
+      - name: IsFullfiled
+        type: BOOLEAN
+        default: false
+        description: Completion fulfillment flag indicating actual completion
+        business_purpose: Distinguishes administrative vs actual completion
+
+  - name: JobworkLineItems
+    description: Individual line items representing input materials or expected output products
+    table_type: detail
+    business_importance: critical
+    columns:
+      - name: JobworkLineItemId
+        type: INTEGER
+        constraints: [PRIMARY_KEY, AUTO_INCREMENT]
+        description: Unique line item identifier
+      - name: JobworkId
+        type: INTEGER
+        constraints: [FOREIGN_KEY, NOT_NULL]
+        references: Jobworks.JobworkId
+        description: Parent jobwork reference
+        business_purpose: Links line items to main jobwork order
+      - name: LineItemType
+        type: ENUM
+        constraints: [NOT_NULL]
+        values: [Input, Output]
+        description: Input (materials sent) or Output (products expected)
+        business_purpose: Determines material flow direction
+      - name: ItemId
+        type: INTEGER
+        constraints: [NOT_NULL]
+        description: Reference to specific item (Style/Fabric/Accessory/Other)
+        business_purpose: Polymorphic reference to various item types
+      - name: ItemType
+        type: ENUM
+        constraints: [NOT_NULL]
+        values: [Style, Fabric, Accessory, Other]
+        description: Item classification determining master table join
+        business_purpose: Determines which master table to reference
+      - name: Quantity
+        type: DOUBLE
+        constraints: [NOT_NULL]
+        description: Required/expected quantity for completion calculations
+        business_purpose: Planning and completion percentage tracking
+      - name: Rate
+        type: DOUBLE
+        description: Unit rate/price multiplied by quantity for line total
+        business_purpose: Cost calculation and vendor payments
+      - name: WastePercent
+        type: DOUBLE
+        description: Expected waste percentage for performance analysis
+        business_purpose: Cost planning and performance variance tracking
+      - name: ActualWaste
+        type: DOUBLE
+        description: Recorded actual waste populated during completion
+        business_purpose: Performance evaluation against planned waste
+
+  - name: JobworkLinkedResources
+    description: Junction table connecting jobworks to related resources for traceability
+    table_type: junction
+    business_importance: high
+    columns:
+      - name: JobworkLinkedResourceId
+        type: INTEGER
+        constraints: [PRIMARY_KEY, AUTO_INCREMENT]
+        description: Unique link identifier
+      - name: JobworkId
+        type: INTEGER
+        constraints: [FOREIGN_KEY, NOT_NULL]
+        references: Jobworks.JobworkId
+        description: Source jobwork being linked
+      - name: LinkedResourceId
+        type: INTEGER
+        constraints: [NOT_NULL]
+        description: Target resource ID (polymorphic reference)
+        business_purpose: Links to various document types
+      - name: LinkedResourceType
+        type: VARCHAR
+        constraints: [NOT_NULL]
+        values: [DeliveryChallan, GRN, Jobwork, PoLineItems]
+        description: Resource type determining target table
+        business_purpose: Enables complete material flow traceability
+
+  - name: JobworkLogs
+    description: Complete audit trail for compliance and change tracking
+    table_type: audit
+    business_importance: high
+    columns:
+      - name: JobworkLogId
+        type: INTEGER
+        constraints: [PRIMARY_KEY, AUTO_INCREMENT]
+        description: Unique log entry identifier
+      - name: JobworkId
+        type: INTEGER
+        constraints: [FOREIGN_KEY, NOT_NULL]
+        references: Jobworks.JobworkId
+        description: Original jobwork reference
+      - name: Status
+        type: ENUM
+        description: Status at time of change for progression tracking
+        business_purpose: Tracks workflow progression over time
+      - name: Total
+        type: DOUBLE
+        description: Total amount at time of change for financial tracking
+        business_purpose: Financial audit trail
+      - name: DeliveryDate
+        type: DATE
+        description: Delivery date at time of change for schedule tracking
+        business_purpose: Schedule change audit
+      - name: ModifiedBy
+        type: INTEGER
+        constraints: [FOREIGN_KEY, NOT_NULL]
+        references: Users.id
+        description: User who made the change
+        business_purpose: Accountability and compliance tracking
+      - name: createdAt
+        type: TIMESTAMP
+        constraints: [NOT_NULL]
+        description: Change timestamp for chronological ordering
+        business_purpose: Temporal audit trail
+
+  - name: Checklists
+    description: Process control for quality gates and milestones in jobwork execution
+    table_type: process_control
+    business_importance: medium
+    columns:
+      - name: id
+        type: INTEGER
+        constraints: [PRIMARY_KEY, AUTO_INCREMENT]
+        description: Unique checklist item identifier
+      - name: ResourceType
+        type: VARCHAR
+        constraints: [NOT_NULL]
+        values: [JW]
+        description: Resource type (JW for jobwork)
+      - name: ResourceId
+        type: INTEGER
+        constraints: [NOT_NULL]
+        description: Jobwork ID reference linking checklist to specific jobwork
+        business_purpose: Process control for specific manufacturing orders
+      - name: ActionName
+        type: TEXT
+        constraints: [NOT_NULL]
+        description: Human-readable milestone description
+        business_purpose: Quality gate and process milestone tracking
+      - name: ActualDate
+        type: TIMESTAMP
+        description: Completion timestamp populated when item completed
+        business_purpose: Milestone completion tracking
+      - name: IsActive
+        type: BOOLEAN
+        default: true
+        description: Active status for soft delete of checklist items
+        business_purpose: Process control lifecycle management
+
+relationships:
+  primary_relationships:
+    - parent: Jobworks
+      child: JobworkLineItems
+      type: one_to_many
+      cascade: delete
+      business_rule: Line items cannot exist without parent jobwork
+    - parent: Jobworks
+      child: JobworkLinkedResources
+      type: one_to_many
+      cascade: delete
+      business_rule: Resource links are dependent on jobwork existence
+    - parent: Jobworks
+      child: JobworkLogs
+      type: one_to_many
+      cascade: retain
+      business_rule: Audit logs must be preserved even if jobwork is deleted
+
+  reference_relationships:
+    - source: Jobworks
+      target: Suppliers
+      type: many_to_one
+      optional: true
+      business_rule: Either supplier or department must be specified
+    - source: Jobworks
+      target: Departments
+      type: many_to_one
+      optional: true
+      business_rule: Either supplier or department must be specified
+    - source: JobworkLineItems
+      target: Styles
+      type: many_to_one
+      conditional: ItemType = 'Style'
+      business_rule: Item reference depends on ItemType value
+
+indexes:
+  performance_indexes:
+    - table: Jobworks
+      columns: [CreationDate, Status, IsActive]
+      purpose: Dashboard queries and filtering
+    - table: JobworkLineItems
+      columns: [JobworkId, LineItemType]
+      purpose: Material flow queries
+    - table: JobworkLinkedResources
+      columns: [JobworkId, LinkedResourceType]
+      purpose: Traceability queries
+    - table: JobworkLogs
+      columns: [JobworkId, createdAt]
+      purpose: Audit trail queries
+
+constraints:
+  business_constraints:
+    - table: Jobworks
+      rule: "Either SupplierId OR DepartmentId must be specified, not both"
+      validation: CHECK ((SupplierId IS NOT NULL AND DepartmentId IS NULL) OR (SupplierId IS NULL AND DepartmentId IS NOT NULL))
+    - table: JobworkLineItems
+      rule: "Quantity must be positive"
+      validation: CHECK (Quantity > 0)
+    - table: JobworkLineItems
+      rule: "WastePercent must be between 0 and 100"
+      validation: CHECK (WastePercent >= 0 AND WastePercent <= 100)

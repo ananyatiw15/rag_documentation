@@ -1,0 +1,148 @@
+business_terminology:
+  core_concepts:
+    - term: jobwork
+      definition: Externalized manufacturing task sent to vendors or internal departments for processing
+      context: Core business entity representing outsourced production operations
+      synonyms: [manufacturing_order, work_order, production_order]
+      related_terms: [vendor, supplier, department]
+    
+    - term: line_item_type
+      definition: Classification of materials as Input (sent to vendor) or Output (received from vendor)
+      context: Determines material flow direction in manufacturing process
+      values: [Input, Output]
+      business_impact: Controls inventory tracking and cost allocation
+    
+    - term: vendor_performance
+      definition: Metrics evaluating supplier efficiency including completion rates and delivery times
+      context: Used for supplier evaluation and contract negotiations
+      key_metrics: [completion_rate, on_time_delivery, quality_score]
+      
+    - term: material_reconciliation
+      definition: Process of comparing planned vs actual material quantities
+      context: Inventory control and loss analysis in manufacturing
+      importance: Critical for cost control and waste management
+
+  quality_control:
+    - term: qc
+      definition: Quality Check process performed on received goods to ensure standards
+      context: Critical quality control step in manufacturing workflow
+      full_form: Quality Control
+      related_processes: [inspection, testing, approval]
+    
+    - term: rejection_rate
+      definition: Percentage of items failing quality control checks
+      context: Key performance indicator for vendor and process evaluation
+      calculation: (rejected_quantity / total_received_quantity) * 100
+      benchmark: Industry standard typically below 5%
+    
+    - term: waste_percent
+      definition: Expected percentage of material loss during manufacturing process
+      context: Used for cost calculation and performance variance analysis
+      typical_range: 2-10% depending on process complexity
+    
+    - term: actual_waste
+      definition: Real material loss recorded during completion of jobwork
+      context: Compared against planned waste for performance evaluation
+      variance_tolerance: "Usually within ±2% of planned waste"
+
+  process_control:
+    - term: checklist
+      definition: Process control milestones ensuring quality gates are met
+      context: Quality assurance and process compliance mechanism
+      types: [quality_gates, safety_checks, completion_milestones]
+    
+    - term: audit_trail
+      definition: Complete record of all changes made to jobwork records
+      context: Compliance and troubleshooting support for manufacturing operations
+      retention_period: Typically 7 years for regulatory compliance
+    
+    - term: fulfillment_status
+      definition: Indicates whether jobwork has been actually completed beyond status
+      context: Distinguishes between administrative completion and actual fulfillment
+      business_rule: Can be true only when status is Completed
+
+  operational_terms:
+    - term: overdue_jobwork
+      definition: Jobwork past its delivery date but not yet completed
+      context: Operational management and escalation trigger
+      calculation: Current_date > delivery_date AND status NOT IN (Completed, Cancelled)
+      escalation_levels: ["1-3 days", "4-7 days", "more than 7 days overdue"]
+    
+    - term: delivery_challan
+      definition: Document tracking materials sent to vendors for processing
+      context: Input material flow tracking mechanism
+      legal_requirement: Mandatory for inter-state material movement
+    
+    - term: grn
+      definition: Goods Receipt Note documenting materials received from vendors
+      context: Output material flow tracking and quality control entry point
+      full_form: Goods Receipt Note
+      triggers: [inventory_update, qc_process, payment_processing]
+
+  financial_terms:
+    - term: jobwork_total
+      definition: Final calculated amount for jobwork including all line items and adjustments
+      context: Used for vendor payments and cost accounting
+      components: [line_item_totals, adjustments, taxes, discounts]
+    
+    - term: rate_variance
+      definition: Difference between planned and actual rates for jobwork items
+      context: Cost control and vendor negotiation
+      acceptable_range: "Usually within ±5% of agreed rates"
+
+workflow_states:
+  jobwork_status:
+    - status: Draft
+      description: Initial state when jobwork is being created
+      permissions: [edit, delete]
+      next_states: [Confirmed, Cancelled]
+    
+    - status: Confirmed
+      description: Jobwork details finalized and ready for approval
+      permissions: [approve, edit_limited, cancel]
+      next_states: [Approved, Draft, Cancelled]
+    
+    - status: Approved
+      description: Jobwork approved and ready for execution
+      permissions: [complete, cancel]
+      next_states: [Completed, Cancelled]
+      triggers: [material_dispatch, checklist_creation]
+    
+    - status: Completed
+      description: Jobwork execution finished
+      permissions: [view_only]
+      next_states: [none]
+      requirements: [all_materials_received, qc_passed]
+    
+    - status: Cancelled
+      description: Jobwork cancelled before completion
+      permissions: [view_only]
+      next_states: [none]
+      impact: [material_return, cost_reversal]
+
+business_rules:
+  validation_rules:
+    - rule: "Either supplier or department must be assigned"
+      enforcement: Database constraint
+      business_impact: Ensures accountability for jobwork execution
+    
+    - rule: "Delivery date cannot be in the past for new jobworks"
+      enforcement: Application validation
+      exception: Admin users can override for data correction
+    
+    - rule: "Line item quantities must be positive"
+      enforcement: Database constraint
+      business_impact: Prevents negative inventory movements
+    
+    - rule: "Waste percentage cannot exceed 50%"
+      enforcement: Application validation
+      business_impact: Prevents unrealistic waste expectations
+
+  calculation_rules:
+    - rule: "Completion percentage = (actual_quantity / planned_quantity) * 100"
+      applies_to: Material flow tracking
+      rounding: 2 decimal places
+    
+    - rule: "On-time delivery rate = (on_time_deliveries / total_deliveries) * 100"
+      applies_to: Vendor performance analysis
+      period: Calculated over specified date range

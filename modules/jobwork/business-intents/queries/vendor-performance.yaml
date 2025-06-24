@@ -1,0 +1,109 @@
+intent_name: vendor_performance_analysis
+description: Analyze vendor performance with completion rates, delivery metrics, and quality indicators for supplier evaluation
+category: vendor_management
+priority: high
+complexity: medium
+
+trigger_patterns:
+  primary_phrases:
+    - "vendor performance metrics"
+    - "supplier evaluation report"
+    - "vendor scorecard"
+    - "supplier ranking"
+    - "best performing suppliers"
+  
+  specific_phrases:
+    - "which vendors have the best performance"
+    - "vendor completion rates"
+    - "on-time delivery rates"
+    - "supplier performance this year"
+    - "rank suppliers by delivery"
+
+sql_template: |
+  SELECT 
+      s."SupplierId",
+      s."CompanyName" as "VendorName",
+      s."Email" as "VendorEmail",
+      COUNT(j."JobworkId") as "TotalJobworks",
+      COUNT(CASE WHEN j."Status" = 'Completed' THEN 1 END) as "CompletedJobworks",
+      COUNT(CASE WHEN j."IsFullfiled" = true THEN 1 END) as "FulfilledJobworks",
+      COUNT(CASE WHEN j."Status" = 'Cancelled' THEN 1 END) as "CancelledJobworks",
+      -- Financial Metrics
+      SUM(j."Total") as "TotalValue",
+      AVG(j."Total") as "AvgJobworkValue",
+      -- Timeline Metrics
+      AVG(CASE WHEN j."Status" = 'Completed' 
+          THEN EXTRACT(DAY FROM j."updatedAt"::date - j."CreationDate") 
+          END) as "AvgCompletionDays",
+      -- Quality Metrics
+      COUNT(CASE 
+          WHEN j."Status" = 'Completed' 
+          AND j."updatedAt"::date <= j."DeliveryDate" 
+          THEN 1 
+      END) * 100.0 / NULLIF(COUNT(CASE WHEN j."Status" = 'Completed' THEN 1 END), 0) as "OnTimeDeliveryRate",
+      -- Performance Rating
+      CASE 
+          WHEN COUNT(CASE WHEN j."Status" = 'Completed' THEN 1 END) = 0 THEN 'No Data'
+          WHEN (COUNT(CASE WHEN j."Status" = 'Completed' AND j."updatedAt"::date <= j."DeliveryDate" THEN 1 END) * 100.0 / 
+                NULLIF(COUNT(CASE WHEN j."Status" = 'Completed' THEN 1 END), 0)) >= 90 THEN 'Excellent'
+          WHEN (COUNT(CASE WHEN j."Status" = 'Completed' AND j."updatedAt"::date <= j."DeliveryDate" THEN 1 END) * 100.0 / 
+                NULLIF(COUNT(CASE WHEN j."Status" = 'Completed' THEN 1 END), 0)) >= 75 THEN 'Good'
+          WHEN (COUNT(CASE WHEN j."Status" = 'Completed' AND j."updatedAt"::date <= j."DeliveryDate" THEN 1 END) * 100.0 / 
+                NULLIF(COUNT(CASE WHEN j."Status" = 'Completed' THEN 1 END), 0)) >= 50 THEN 'Average'
+          ELSE 'Poor'
+      END as "PerformanceRating"
+  FROM "Jobworks" j
+  JOIN "Suppliers" s ON j."SupplierId" = s."SupplierId"
+  WHERE j."CreationDate" >= {start_date}
+    AND j."CreationDate" <= {end_date}
+    AND j."IsActive" = true
+    AND s."IsActive" = true
+    AND ({vendor_id} IS NULL OR s."SupplierId" = {vendor_id})
+  GROUP BY s."SupplierId", s."CompanyName", s."Email"
+  HAVING COUNT(j."JobworkId") > 0
+  ORDER BY "TotalValue" DESC, "OnTimeDeliveryRate" DESC
+
+parameters:
+  - name: start_date
+    type: date
+    required: true
+    description: Analysis start date
+    extraction_hints: ["from", "since", "starting", "beginning"]
+    
+  - name: end_date
+    type: date
+    required: true
+    description: Analysis end date
+    extraction_hints: ["to", "until", "ending", "through"]
+    
+  - name: vendor_id
+    type: integer
+    required: false
+    description: Specific vendor ID for focused analysis
+    extraction_hints: ["vendor", "supplier", "company"]
+
+output_format:
+  type: table
+  columns:
+    - VendorName: "Supplier company name"
+    - TotalJobworks: "Total number of jobworks assigned"
+    - CompletedJobworks: "Successfully completed jobworks"
+    - FulfilledJobworks: "Actually fulfilled jobworks"
+    - TotalValue: "Total business value"
+    - AvgCompletionDays: "Average days to complete"
+    - OnTimeDeliveryRate: "Percentage of on-time deliveries"
+    - PerformanceRating: "Overall performance rating"
+
+business_rules:
+  - "Only active suppliers and jobworks are included"
+  - "Performance rating based on on-time delivery percentage"
+  - "Completion days calculated from creation to actual completion"
+  - "Financial metrics include all jobwork values regardless of status"
+
+usage_contexts:
+  - "Monthly vendor report generation"
+  - "Supplier evaluation for contract renewals"
+  - "Vendor performance dashboards"
+  - "Procurement decision support"
+
+tags: [vendor_analysis, supplier_evaluation, performance_ranking, kpi, metrics]

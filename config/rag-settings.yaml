@@ -1,0 +1,161 @@
+rag_configuration:
+  system_info:
+    name: "Ragish - Manufacturing ERP Assistant"
+    version: "1.0.0"
+    domain: "Manufacturing Operations"
+    primary_module: "jobwork"
+    last_updated: "2025-06-23"
+  
+  ai_agent_settings:
+    model_requirements:
+      min_context_window: 8192
+      recommended_context_window: 32768
+      embedding_dimensions: 1536
+      temperature: 0.1
+      max_tokens: 2048
+    
+    response_format:
+      default_output: "structured_table"
+      include_sql: true
+      include_explanation: true
+      confidence_threshold: 0.8
+    
+    safety_settings:
+      sql_injection_protection: true
+      parameter_validation: true
+      query_timeout_seconds: 30
+      max_results_limit: 1000
+
+  intent_recognition:
+    confidence_threshold: 0.75
+    fallback_intent: "general_query"
+    max_intents_per_query: 3
+    
+    phrase_matching:
+      algorithm: "semantic_similarity"
+      fuzzy_matching: true
+      synonym_expansion: true
+      context_awareness: true
+    
+    parameter_extraction:
+      date_formats: ["YYYY-MM-DD", "DD/MM/YYYY", "MM-DD-YYYY"]
+      number_formats: ["integer", "decimal", "percentage"]
+      text_normalization: true
+      case_insensitive: true
+
+  database_integration:
+    connection_pool:
+      min_connections: 2
+      max_connections: 10
+      idle_timeout: 300
+    
+    query_optimization:
+      use_prepared_statements: true
+      enable_query_cache: true
+      explain_plan_analysis: true
+      index_usage_monitoring: true
+    
+    security:
+      read_only_access: true
+      parameter_sanitization: true
+      query_whitelist_only: true
+      audit_all_queries: true
+
+  embedding_strategy:
+    chunking:
+      method: "semantic_chunking"
+      chunk_size: 512
+      overlap_size: 50
+      preserve_structure: true
+    
+    vectorization:
+      model: "text-embedding-ada-002"
+      batch_size: 100
+      normalize_vectors: true
+      dimension_reduction: false
+    
+    retrieval:
+      similarity_metric: "cosine"
+      top_k_results: 5
+      rerank_results: true
+      context_expansion: true
+
+  performance_monitoring:
+    metrics:
+      - query_response_time
+      - intent_recognition_accuracy
+      - sql_execution_time
+      - user_satisfaction_score
+    
+    logging:
+      level: "INFO"
+      include_sql_queries: true
+      include_user_queries: true
+      retention_days: 90
+    
+    alerts:
+      slow_query_threshold: 5000  # milliseconds
+      error_rate_threshold: 0.05  # 5%
+      confidence_drop_threshold: 0.6
+
+module_specific_settings:
+  jobwork:
+    priority_intents:
+      - jobwork_summary
+      - material_flow_tracking
+      - vendor_performance_analysis
+    
+    default_filters:
+      active_only: true
+      date_range_days: 90
+      include_cancelled: false
+    
+    business_rules:
+      enforce_data_privacy: true
+      mask_sensitive_fields: ["email", "phone"]
+      require_authorization: ["financial_data", "vendor_details"]
+    
+    performance_optimizations:
+      cache_vendor_data: true
+      precompute_aggregations: true
+      use_materialized_views: ["vendor_performance", "material_flow"]
+
+validation_rules:
+  input_validation:
+    max_query_length: 500
+    allowed_characters: "alphanumeric_spaces_punctuation"
+    blocked_keywords: ["DROP", "DELETE", "UPDATE", "INSERT", "ALTER"]
+  
+  output_validation:
+    max_rows_returned: 1000
+    required_columns: ["id", "description"]
+    data_type_checking: true
+    null_value_handling: "display_as_empty"
+
+error_handling:
+  graceful_degradation: true
+  fallback_responses:
+    - "I couldn't understand your query. Could you rephrase it?"
+    - "Let me help you with jobwork information. What specific data do you need?"
+    - "I can help with jobwork summaries, material tracking, or vendor performance. What interests you?"
+  
+  retry_logic:
+    max_retries: 3
+    backoff_strategy: "exponential"
+    retry_on_errors: ["timeout", "connection_error", "temporary_failure"]
+
+user_experience:
+  conversation_context:
+    maintain_session: true
+    context_window_size: 10
+    remember_preferences: true
+  
+  response_personalization:
+    adapt_to_user_role: true
+    customize_detail_level: true
+    remember_frequent_queries: true
+  
+  help_system:
+    provide_examples: true
+    suggest_related_queries: true
+    explain_business_terms: true

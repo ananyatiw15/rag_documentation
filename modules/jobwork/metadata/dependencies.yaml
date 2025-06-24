@@ -1,0 +1,84 @@
+module_dependencies:
+  core_dependencies:
+    - module: suppliers
+      relationship: many_to_one
+      description: External vendors performing jobwork operations
+      critical: true
+    - module: departments
+      relationship: many_to_one
+      description: Internal departments for in-house operations
+      critical: true
+    - module: users
+      relationship: many_to_one
+      description: User management for audit trails and assignments
+      critical: true
+
+  material_flow_dependencies:
+    - module: delivery_challans
+      relationship: one_to_many
+      description: Material dispatch tracking to vendors
+      critical: true
+    - module: grns
+      relationship: one_to_many
+      description: Goods receipt from vendors with QC
+      critical: true
+    - module: inventory
+      relationship: many_to_many
+      description: Stock management and material tracking
+      critical: true
+
+  business_process_dependencies:
+    - module: purchase_orders
+      relationship: many_to_many
+      description: Linked PO line items for material sourcing
+      critical: false
+    - module: qc_reports
+      relationship: one_to_many
+      description: Quality control results and metrics
+      critical: true
+    - module: styles
+      relationship: many_to_many
+      description: Product specifications and BOMs
+      critical: false
+
+  supporting_dependencies:
+    - module: source_addresses
+      relationship: many_to_one
+      description: Vendor and shipping address management
+      critical: false
+    - module: payment_terms
+      relationship: many_to_one
+      description: Financial terms and conditions
+      critical: false
+    - module: unit_of_measures
+      relationship: many_to_one
+      description: Quantity and measurement standards
+      critical: false
+
+database_dependencies:
+  foreign_keys:
+    - table: Jobworks
+      references: [Suppliers.SupplierId, Departments.DepartmentId, JobworkTypes.JobworkTypeId, Users.id]
+    - table: JobworkLineItems
+      references: [Jobworks.JobworkId, UnitOfMeasures.UnitOfMeasureId, Taxes.TaxId]
+    - table: JobworkLinkedResources
+      references: [Jobworks.JobworkId]
+    - table: JobworkLogs
+      references: [Jobworks.JobworkId, Users.id]
+    - table: Checklists
+      references: [Jobworks.JobworkId]
+
+api_dependencies:
+  internal_apis:
+    - service: supplier_service
+      endpoints: [getSupplierDetails, getSupplierPerformance]
+    - service: inventory_service
+      endpoints: [updateStock, getAvailableQuantity]
+    - service: qc_service
+      endpoints: [createQcReport, getQcResults]
+  
+  external_integrations:
+    - system: barcode_system
+      purpose: Material tracking and identification
+    - system: email_service
+      purpose: Vendor notifications and communications
