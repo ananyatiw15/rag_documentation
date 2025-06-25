@@ -1,0 +1,286 @@
+# Model configurations for Jobwork module RAG system
+# Defines model settings and context management
+
+model_configurations:
+  primary_model:
+    name: "gpt-4-turbo"
+    version: "2024-04-09"
+    context_window: 128000
+    max_tokens: 4096
+    temperature: 0.1
+    top_p: 0.95
+    frequency_penalty: 0.0
+    presence_penalty: 0.0
+    
+  fallback_model:
+    name: "gpt-3.5-turbo"
+    version: "0125"
+    context_window: 16385
+    max_tokens: 2048
+    temperature: 0.2
+    top_p: 0.9
+
+  embedding_model:
+    name: "text-embedding-3-large"
+    dimensions: 3072
+    encoding_format: "float"
+    batch_size: 100
+    
+  fine_tuned_models:
+    jobwork_specialist:
+      base_model: "gpt-3.5-turbo"
+      fine_tune_id: "ft:gpt-3.5-turbo:jobwork-module:20240601"
+      training_data_size: 1000
+      validation_accuracy: 0.92
+      use_cases: ["complex jobwork queries", "domain-specific terminology"]
+
+# Context management
+context_management:
+  max_context_tokens: 120000  # Reserve 8k for response
+  context_allocation:
+    system_prompt: 2000
+    conversation_history: 8000
+    retrieved_documents: 100000
+    user_query: 1000
+    buffer: 9000
+    
+  context_prioritization:
+    high_priority:
+      - "Current user query"
+      - "Intent-specific documentation"
+      - "Related SQL templates"
+      - "Recent conversation context"
+    
+    medium_priority:
+      - "Entity relationships"
+      - "Sample data"
+      - "Business glossary"
+      - "Function schemas"
+    
+    low_priority:
+      - "Technical documentation"
+      - "Historical conversation"
+      - "General domain concepts"
+
+  context_compression:
+    enabled: true
+    compression_ratio: 0.7
+    preserve_sections:
+      - "SQL templates"
+      - "Function parameters"
+      - "Entity definitions"
+      - "Business rules"
+
+# Prompt engineering
+prompt_templates:
+  system_prompt: |
+    You are Ragish, an AI assistant specialized in the Jobwork module of a manufacturing ERP system.
+    
+    Your expertise includes:
+    - Jobwork lifecycle management and tracking
+    - Material flow and reconciliation
+    - Vendor performance evaluation
+    - Quality control monitoring
+    - Overdue analysis and risk management
+    
+    You have access to:
+    - Comprehensive database schemas and relationships
+    - SQL query templates for complex analysis
+    - Backend service functions and APIs
+    - Business process documentation
+    - Real-world scenarios and test cases
+    
+    Guidelines:
+    1. Always provide accurate, data-driven responses
+    2. Use appropriate SQL templates or function calls
+    3. Explain business context and implications
+    4. Suggest follow-up actions when relevant
+    5. Maintain professional, helpful tone
+    
+    When users ask about jobworks, suppliers, materials, quality, or delays, 
+    use the provided documentation to give comprehensive, actionable answers.
+
+  query_analysis_prompt: |
+    Analyze the user query and determine:
+    1. Primary intent (jobwork-summary, material-flow-tracking, vendor-performance, qc-monitoring, overdue-analysis)
+    2. Required parameters and filters
+    3. Expected output format
+    4. Business context and urgency level
+    
+    User Query: {user_query}
+    
+    Provide structured analysis with confidence scores.
+
+  response_generation_prompt: |
+    Based on the retrieved documentation and query analysis, generate a comprehensive response that:
+    
+    1. Directly answers the user's question
+    2. Provides relevant data insights
+    3. Explains business implications
+    4. Suggests next steps or related queries
+    5. Uses appropriate technical detail level
+    
+    Retrieved Context: {retrieved_context}
+    Query Analysis: {query_analysis}
+    User Query: {user_query}
+    
+    Generate response in a helpful, professional manner.
+
+# Response formatting
+response_formatting:
+  default_format: "structured"
+  formats:
+    structured:
+      sections:
+        - "summary"
+        - "detailed_analysis"
+        - "data_insights"
+        - "recommendations"
+        - "related_queries"
+    
+    concise:
+      sections:
+        - "direct_answer"
+        - "key_metrics"
+        - "next_steps"
+    
+    technical:
+      sections:
+        - "sql_query"
+        - "function_call"
+        - "parameters"
+        - "expected_output"
+        - "business_context"
+
+  output_preferences:
+    include_sql: false  # Only when specifically requested
+    include_metrics: true
+    include_charts: false  # Text-based responses
+    include_recommendations: true
+    max_response_length: 2000
+
+# Model performance tuning
+performance_tuning:
+  response_optimization:
+    target_response_time: "2 seconds"
+    max_response_time: "10 seconds"
+    timeout_handling: "graceful_degradation"
+    
+  quality_metrics:
+    accuracy_threshold: 0.85
+    relevance_threshold: 0.80
+    completeness_threshold: 0.75
+    
+  monitoring:
+    track_response_times: true
+    track_accuracy_scores: true
+    track_user_satisfaction: true
+    log_failed_queries: true
+
+# Specialized configurations
+specialized_configs:
+  sql_generation:
+    model: "gpt-4-turbo"
+    temperature: 0.0  # Deterministic for SQL
+    max_tokens: 1500
+    validation: true
+    explain_query: true
+    
+  data_analysis:
+    model: "gpt-4-turbo"
+    temperature: 0.1
+    max_tokens: 2000
+    include_insights: true
+    suggest_visualizations: false
+    
+  conversational:
+    model: "gpt-3.5-turbo"
+    temperature: 0.3
+    max_tokens: 1000
+    maintain_context: true
+    friendly_tone: true
+
+# Error handling
+error_handling:
+  model_failures:
+    retry_attempts: 3
+    retry_delay: 1  # seconds
+    fallback_model: "gpt-3.5-turbo"
+    
+  context_overflow:
+    strategy: "intelligent_truncation"
+    preserve_priority: "high"
+    compression_enabled: true
+    
+  invalid_queries:
+    response_strategy: "clarification_request"
+    provide_examples: true
+    suggest_alternatives: true
+
+# Evaluation and testing
+evaluation_framework:
+  test_datasets:
+    unit_tests: "test-cases/real-world-scenarios.yaml"
+    integration_tests: "cross-module scenarios"
+    performance_tests: "large dataset queries"
+    
+  evaluation_metrics:
+    - "Intent classification accuracy"
+    - "Parameter extraction accuracy"
+    - "SQL query correctness"
+    - "Response relevance"
+    - "Business context accuracy"
+    
+  benchmarking:
+    baseline_model: "gpt-3.5-turbo"
+    target_improvement: "15% accuracy increase"
+    performance_regression_threshold: "5%"
+
+# Deployment configurations
+deployment_settings:
+  environment_configs:
+    development:
+      model: "gpt-3.5-turbo"
+      logging_level: "debug"
+      cache_enabled: false
+      
+    staging:
+      model: "gpt-4-turbo"
+      logging_level: "info"
+      cache_enabled: true
+      cache_ttl: 300  # 5 minutes
+      
+    production:
+      model: "gpt-4-turbo"
+      logging_level: "warn"
+      cache_enabled: true
+      cache_ttl: 3600  # 1 hour
+      rate_limiting: true
+      
+  scaling_parameters:
+    concurrent_requests: 10
+    queue_size: 100
+    timeout: 30  # seconds
+    
+  monitoring_alerts:
+    high_error_rate: 0.05  # 5%
+    slow_response_time: 5  # seconds
+    low_accuracy_score: 0.75
+
+# Security and compliance
+security_settings:
+  data_privacy:
+    mask_sensitive_data: true
+    log_retention: 30  # days
+    anonymize_logs: true
+    
+  access_control:
+    require_authentication: true
+    role_based_access: true
+    audit_trail: true
+    
+  compliance:
+    gdpr_compliant: true
+    data_residency: "eu-west-1"
+    encryption_at_rest: true
+    encryption_in_transit: true

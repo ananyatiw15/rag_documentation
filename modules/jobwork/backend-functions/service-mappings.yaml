@@ -1,0 +1,387 @@
+# Service mappings for Jobwork module backend functions
+# Maps business intents to backend service functions
+
+service_mappings:
+  jobwork-summary:
+    primary_service: "JobworkService"
+    functions:
+      - name: "getJobworkSummary"
+        description: "Retrieve comprehensive jobwork information"
+        parameters:
+          - name: "jobworkId"
+            type: "integer"
+            required: false
+            description: "Specific jobwork ID to retrieve"
+          - name: "filters"
+            type: "object"
+            required: false
+            description: "Filter criteria for jobwork list"
+        return_type: "JobworkSummaryResponse"
+        
+      - name: "getJobworkList"
+        description: "Get paginated list of jobworks with filters"
+        parameters:
+          - name: "page"
+            type: "integer"
+            default: 1
+          - name: "limit"
+            type: "integer"
+            default: 20
+          - name: "filters"
+            type: "object"
+            required: false
+        return_type: "PaginatedJobworkResponse"
+        
+      - name: "getJobworkDetails"
+        description: "Get detailed jobwork information including line items"
+        parameters:
+          - name: "jobworkId"
+            type: "integer"
+            required: true
+        return_type: "DetailedJobworkResponse"
+
+  material-flow-tracking:
+    primary_service: "MaterialFlowService"
+    functions:
+      - name: "trackMaterialFlow"
+        description: "Track material flow for specific jobwork"
+        parameters:
+          - name: "jobworkId"
+            type: "integer"
+            required: true
+          - name: "includeHistory"
+            type: "boolean"
+            default: false
+        return_type: "MaterialFlowResponse"
+        
+      - name: "getMaterialReconciliation"
+        description: "Get material reconciliation report"
+        parameters:
+          - name: "jobworkId"
+            type: "integer"
+            required: false
+          - name: "supplierId"
+            type: "integer"
+            required: false
+          - name: "dateRange"
+            type: "object"
+            required: false
+        return_type: "MaterialReconciliationResponse"
+        
+      - name: "getDeliveryStatus"
+        description: "Get delivery and receipt status"
+        parameters:
+          - name: "jobworkId"
+            type: "integer"
+            required: true
+        return_type: "DeliveryStatusResponse"
+
+  vendor-performance:
+    primary_service: "VendorPerformanceService"
+    functions:
+      - name: "getVendorPerformanceMetrics"
+        description: "Calculate vendor performance metrics"
+        parameters:
+          - name: "supplierId"
+            type: "integer"
+            required: false
+          - name: "dateRange"
+            type: "object"
+            required: false
+          - name: "includeComparison"
+            type: "boolean"
+            default: false
+        return_type: "VendorPerformanceResponse"
+        
+      - name: "generateVendorScorecard"
+        description: "Generate comprehensive vendor scorecard"
+        parameters:
+          - name: "supplierId"
+            type: "integer"
+            required: true
+          - name: "period"
+            type: "string"
+            default: "monthly"
+        return_type: "VendorScorecardResponse"
+        
+      - name: "getTopPerformingVendors"
+        description: "Get list of top performing vendors"
+        parameters:
+          - name: "limit"
+            type: "integer"
+            default: 10
+          - name: "metric"
+            type: "string"
+            default: "overall"
+        return_type: "TopVendorsResponse"
+
+  qc-monitoring:
+    primary_service: "QualityControlService"
+    functions:
+      - name: "getQualityMetrics"
+        description: "Get quality control metrics and reports"
+        parameters:
+          - name: "jobworkId"
+            type: "integer"
+            required: false
+          - name: "supplierId"
+            type: "integer"
+            required: false
+          - name: "dateRange"
+            type: "object"
+            required: false
+        return_type: "QualityMetricsResponse"
+        
+      - name: "getQualityTrends"
+        description: "Get quality trend analysis"
+        parameters:
+          - name: "period"
+            type: "string"
+            default: "monthly"
+          - name: "groupBy"
+            type: "string"
+            default: "supplier"
+        return_type: "QualityTrendsResponse"
+        
+      - name: "getRejectionAnalysis"
+        description: "Get detailed rejection analysis"
+        parameters:
+          - name: "filters"
+            type: "object"
+            required: false
+        return_type: "RejectionAnalysisResponse"
+
+  overdue-analysis:
+    primary_service: "OverdueAnalysisService"
+    functions:
+      - name: "getOverdueJobworks"
+        description: "Get list of overdue jobworks with risk assessment"
+        parameters:
+          - name: "riskLevel"
+            type: "string"
+            required: false
+          - name: "supplierId"
+            type: "integer"
+            required: false
+        return_type: "OverdueJobworksResponse"
+        
+      - name: "getDelayAnalysis"
+        description: "Analyze delivery delays and patterns"
+        parameters:
+          - name: "dateRange"
+            type: "object"
+            required: false
+          - name: "groupBy"
+            type: "string"
+            default: "supplier"
+        return_type: "DelayAnalysisResponse"
+        
+      - name: "generateRiskReport"
+        description: "Generate risk assessment report"
+        parameters:
+          - name: "includeRecommendations"
+            type: "boolean"
+            default: true
+        return_type: "RiskReportResponse"
+
+# Supporting services
+supporting_services:
+  SupplierService:
+    description: "Manages supplier-related operations"
+    key_functions:
+      - "getSupplierDetails"
+      - "getSupplierList"
+      - "updateSupplierPerformance"
+      
+  GRNService:
+    description: "Manages Goods Receipt Note operations"
+    key_functions:
+      - "createGRN"
+      - "updateGRNStatus"
+      - "getGRNDetails"
+      
+  DeliveryChallanService:
+    description: "Manages delivery challan operations"
+    key_functions:
+      - "createDeliveryChallan"
+      - "updateDeliveryStatus"
+      - "getDeliveryDetails"
+      
+  NotificationService:
+    description: "Handles notifications and alerts"
+    key_functions:
+      - "sendOverdueAlert"
+      - "sendQualityAlert"
+      - "sendDeliveryNotification"
+
+# Service dependencies
+service_dependencies:
+  JobworkService:
+    depends_on:
+      - "SupplierService"
+      - "DepartmentService"
+      - "UserService"
+    database_tables:
+      - "Jobworks"
+      - "JobworkLineItems"
+      - "JobworkLogs"
+      
+  MaterialFlowService:
+    depends_on:
+      - "JobworkService"
+      - "GRNService"
+      - "DeliveryChallanService"
+    database_tables:
+      - "Jobworks"
+      - "JobworkLineItems"
+      - "DeliveryChallans"
+      - "DeliveryChallanItemDetails"
+      - "GRNs"
+      - "GRNItemDetails"
+      
+  VendorPerformanceService:
+    depends_on:
+      - "SupplierService"
+      - "JobworkService"
+      - "QualityControlService"
+    database_tables:
+      - "Suppliers"
+      - "Jobworks"
+      - "GRNs"
+      - "DeliveryChallans"
+      
+  QualityControlService:
+    depends_on:
+      - "GRNService"
+      - "JobworkService"
+    database_tables:
+      - "GRNs"
+      - "GRNItemDetails"
+      - "GRNItemsQc"
+      
+  OverdueAnalysisService:
+    depends_on:
+      - "JobworkService"
+      - "DeliveryChallanService"
+      - "NotificationService"
+    database_tables:
+      - "Jobworks"
+      - "DeliveryChallans"
+      - "ShipmentDateLogs"
+
+# API endpoint mappings
+api_endpoints:
+  jobwork_summary:
+    base_path: "/api/jobwork"
+    endpoints:
+      - path: "/summary"
+        method: "GET"
+        function: "getJobworkSummary"
+        
+      - path: "/list"
+        method: "GET"
+        function: "getJobworkList"
+        
+      - path: "/{id}/details"
+        method: "GET"
+        function: "getJobworkDetails"
+
+  material_flow:
+    base_path: "/api/material-flow"
+    endpoints:
+      - path: "/track/{jobworkId}"
+        method: "GET"
+        function: "trackMaterialFlow"
+        
+      - path: "/reconciliation"
+        method: "GET"
+        function: "getMaterialReconciliation"
+        
+      - path: "/delivery-status/{jobworkId}"
+        method: "GET"
+        function: "getDeliveryStatus"
+
+  vendor_performance:
+    base_path: "/api/vendor-performance"
+    endpoints:
+      - path: "/metrics"
+        method: "GET"
+        function: "getVendorPerformanceMetrics"
+        
+      - path: "/scorecard/{supplierId}"
+        method: "GET"
+        function: "generateVendorScorecard"
+        
+      - path: "/top-performers"
+        method: "GET"
+        function: "getTopPerformingVendors"
+
+  quality_control:
+    base_path: "/api/quality-control"
+    endpoints:
+      - path: "/metrics"
+        method: "GET"
+        function: "getQualityMetrics"
+        
+      - path: "/trends"
+        method: "GET"
+        function: "getQualityTrends"
+        
+      - path: "/rejection-analysis"
+        method: "GET"
+        function: "getRejectionAnalysis"
+
+  overdue_analysis:
+    base_path: "/api/overdue-analysis"
+    endpoints:
+      - path: "/overdue-jobworks"
+        method: "GET"
+        function: "getOverdueJobworks"
+        
+      - path: "/delay-analysis"
+        method: "GET"
+        function: "getDelayAnalysis"
+        
+      - path: "/risk-report"
+        method: "GET"
+        function: "generateRiskReport"
+
+# Error handling patterns
+error_handling:
+  common_errors:
+    - code: "JOBWORK_NOT_FOUND"
+      message: "Jobwork not found"
+      http_status: 404
+      
+    - code: "SUPPLIER_NOT_FOUND"
+      message: "Supplier not found"
+      http_status: 404
+      
+    - code: "INVALID_DATE_RANGE"
+      message: "Invalid date range provided"
+      http_status: 400
+      
+    - code: "INSUFFICIENT_PERMISSIONS"
+      message: "Insufficient permissions to access this resource"
+      http_status: 403
+      
+    - code: "DATA_PROCESSING_ERROR"
+      message: "Error processing data"
+      http_status: 500
+
+# Performance considerations
+performance_optimization:
+  caching_strategy:
+    - "Cache vendor performance metrics for 1 hour"
+    - "Cache quality trends for 30 minutes"
+    - "Cache overdue analysis for 15 minutes"
+    
+  query_optimization:
+    - "Use database indexes for frequent queries"
+    - "Implement pagination for large result sets"
+    - "Use database views for complex aggregations"
+    
+  async_processing:
+    - "Generate large reports asynchronously"
+    - "Use background jobs for data-intensive operations"
+    - "Implement queue-based processing for notifications"

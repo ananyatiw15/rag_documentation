@@ -1,0 +1,250 @@
+# Sample data for Jobwork module entities
+# Used for RAG training and testing scenarios
+
+jobworks_samples:
+  - JobworkId: 1001
+    JobworkTypeId: 1
+    CreationDate: "2024-01-15"
+    Currency: "INR"
+    PaymentTermId: 1
+    POCs: [101, 102]
+    SupplierId: 501
+    SupplierAddressId: 1
+    DepartmentId: 10
+    VendorPocId: 201
+    BillingAddressId: 2
+    ShippingAddressId: 3
+    CustomerNotes: "High priority order for spring collection"
+    TermsAndConditions: "Payment within 30 days of delivery"
+    SubTotal: 150000.00
+    Total: 177000.00
+    DiscountValue: 5000.00
+    DiscountType: "PERCENTAGE"
+    DiscountTotal: 5000.00
+    AdjustmentInfo: "Transportation charges"
+    AdjustmentAmount: 2000.00
+    Status: "APPROVED"
+    DeliveryDate: "2024-02-15"
+    DeliveryDateRemarks: "Critical delivery for fashion week"
+    IsActive: true
+    IsFullfiled: false
+    CreatedBy: 1
+    ModifiedBy: 1
+    ParentSupplierId: null
+
+  - JobworkId: 1002
+    JobworkTypeId: 2
+    CreationDate: "2024-01-20"
+    Currency: "INR"
+    PaymentTermId: 2
+    POCs: [103, 104]
+    SupplierId: 502
+    SupplierAddressId: 4
+    DepartmentId: 11
+    VendorPocId: 202
+    BillingAddressId: 5
+    ShippingAddressId: 6
+    CustomerNotes: "Quality check required before shipment"
+    TermsAndConditions: "Payment on delivery"
+    SubTotal: 85000.00
+    Total: 100300.00
+    DiscountValue: 0.00
+    DiscountType: null
+    DiscountTotal: 0.00
+    AdjustmentInfo: "GST and handling charges"
+    AdjustmentAmount: 3000.00
+    Status: "IN_PROGRESS"
+    DeliveryDate: "2024-02-28"
+    DeliveryDateRemarks: "Standard delivery timeline"
+    IsActive: true
+    IsFullfiled: false
+    CreatedBy: 2
+    ModifiedBy: 2
+    ParentSupplierId: 501
+
+jobwork_line_items_samples:
+  - JobworkLineItemId: 2001
+    JobworkId: 1001
+    LineItemType: "FABRIC"
+    ItemId: 301
+    ItemType: "FABRIC"
+    ItemDescription: "Cotton blend fabric for shirts - 60% cotton, 40% polyester"
+    Rate: 250.00
+    OutputRate: 275.00
+    OutputRateSystem: 270.00
+    Unit: 1
+    Quantity: 500.00
+    Tax: 1
+    WastePercent: 5.00
+    WasteValue: 25.00
+    DeliveryDate: "2024-02-10"
+    DeliveryDateRemarks: "Pre-delivery for cutting"
+    CreatedBy: 1
+    ModifiedBy: 1
+    ActualWaste: 4.2
+    ActualAverage: 248.50
+
+  - JobworkLineItemId: 2002
+    JobworkId: 1001
+    LineItemType: "ACCESSORY"
+    ItemId: 401
+    ItemType: "ACCESSORY"
+    ItemDescription: "Buttons - plastic, 15mm diameter, white color"
+    Rate: 2.50
+    OutputRate: 2.75
+    OutputRateSystem: 2.70
+    Unit: 2
+    Quantity: 2000.00
+    Tax: 1
+    WastePercent: 2.00
+    WasteValue: 40.00
+    DeliveryDate: "2024-02-12"
+    DeliveryDateRemarks: "Along with fabric delivery"
+    CreatedBy: 1
+    ModifiedBy: 1
+    ActualWaste: 1.8
+    ActualAverage: 2.48
+
+suppliers_samples:
+  - SupplierId: 501
+    SupplierCode: "SUP001"
+    FirstName: "Rajesh"
+    LastName: "Kumar"
+    PrimaryPhone: "+91-9876543210"
+    UserName: "rajesh.kumar"
+    CompanyName: "Kumar Textiles Pvt Ltd"
+    CompanyEmail: "info@kumartextiles.com"
+    CompanyPhone: "+91-11-12345678"
+    Website: "www.kumartextiles.com"
+    AddressLine1: "Plot 45, Industrial Area"
+    AddressLine2: "Sector 8, Gurgaon"
+    City: "Gurgaon"
+    State: "Haryana"
+    Country: "India"
+    PostalCode: "122001"
+    PANNo: "ABCDE1234F"
+    GSTNo: "06ABCDE1234F1Z5"
+    LicenceNo: "MFG/2020/001"
+    IsActive: true
+    SupplierCategoryId: 1
+    CreatedBy: 1
+    ModifiedBy: 1
+
+  - SupplierId: 502
+    SupplierCode: "SUP002"
+    FirstName: "Priya"
+    LastName: "Sharma"
+    PrimaryPhone: "+91-9876543211"
+    UserName: "priya.sharma"
+    CompanyName: "Sharma Garments Ltd"
+    CompanyEmail: "contact@sharmagarments.com"
+    CompanyPhone: "+91-22-87654321"
+    Website: "www.sharmagarments.com"
+    AddressLine1: "Building 12, Textile Hub"
+    AddressLine2: "Andheri East, Mumbai"
+    City: "Mumbai"
+    State: "Maharashtra"
+    Country: "India"
+    PostalCode: "400069"
+    PANNo: "FGHIJ5678K"
+    GSTNo: "27FGHIJ5678K1Z8"
+    LicenceNo: "MFG/2021/002"
+    IsActive: true
+    SupplierCategoryId: 2
+    CreatedBy: 2
+    ModifiedBy: 2
+
+grn_samples:
+  - GRNId: 3001
+    GRNNumber: "GRN/2024/001"
+    SupplierId: 501
+    JobworkId: 1001
+    GRNDate: "2024-02-10"
+    ReceivedBy: 1
+    QualityStatus: "APPROVED"
+    TotalQuantity: 495.00
+    AcceptedQuantity: 490.00
+    RejectedQuantity: 5.00
+    RejectionReason: "Minor color variation in 5 meters"
+    CustomerType: "SUPPLIER"
+    IsActive: true
+    CreatedBy: 1
+    ModifiedBy: 1
+
+  - GRNId: 3002
+    GRNNumber: "GRN/2024/002"
+    SupplierId: 502
+    JobworkId: 1002
+    GRNDate: "2024-02-25"
+    ReceivedBy: 2
+    QualityStatus: "PENDING"
+    TotalQuantity: 1980.00
+    AcceptedQuantity: 0.00
+    RejectedQuantity: 0.00
+    RejectionReason: null
+    CustomerType: "SUPPLIER"
+    IsActive: true
+    CreatedBy: 2
+    ModifiedBy: 2
+
+delivery_challan_samples:
+  - DeliveryChallanId: 4001
+    DeliveryChallanNumber: "DC/2024/001"
+    SupplierId: 501
+    JobworkId: 1001
+    DeliveryDate: "2024-02-08"
+    TransportMode: "ROAD"
+    VehicleNumber: "HR-26-AB-1234"
+    DriverName: "Suresh Singh"
+    DriverPhone: "+91-9876543212"
+    CustomerType: "SUPPLIER"
+    TotalQuantity: 500.00
+    DeliveredQuantity: 500.00
+    PendingQuantity: 0.00
+    IsActive: true
+    CreatedBy: 1
+    ModifiedBy: 1
+
+  - DeliveryChallanId: 4002
+    DeliveryChallanNumber: "DC/2024/002"
+    SupplierId: 502
+    JobworkId: 1002
+    DeliveryDate: "2024-02-23"
+    TransportMode: "ROAD"
+    VehicleNumber: "MH-12-CD-5678"
+    DriverName: "Ramesh Patil"
+    DriverPhone: "+91-9876543213"
+    CustomerType: "SUPPLIER"
+    TotalQuantity: 2000.00
+    DeliveredQuantity: 1980.00
+    PendingQuantity: 20.00
+    IsActive: true
+    CreatedBy: 2
+    ModifiedBy: 2
+
+sales_order_samples:
+  - SalesOrderId: 5001
+    SalesOrderNumber: "SO/2024/001"
+    BrandId: 101
+    OrderDate: "2024-01-10"
+    DeliveryDate: "2024-03-15"
+    TotalAmount: 250000.00
+    OrderStatus: "CONFIRMED"
+    Priority: "HIGH"
+    CustomerNotes: "Premium collection for spring season"
+    IsActive: true
+    CreatedBy: 1
+    ModifiedBy: 1
+
+  - SalesOrderId: 5002
+    SalesOrderNumber: "SO/2024/002"
+    BrandId: 102
+    OrderDate: "2024-01-18"
+    DeliveryDate: "2024-03-30"
+    TotalAmount: 180000.00
+    OrderStatus: "IN_PROGRESS"
+    Priority: "MEDIUM"
+    CustomerNotes: "Standard delivery timeline acceptable"
+    IsActive: true
+    CreatedBy: 2
+    ModifiedBy: 2

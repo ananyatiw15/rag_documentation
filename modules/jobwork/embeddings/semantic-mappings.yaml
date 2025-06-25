@@ -1,0 +1,428 @@
+# Semantic mappings for Jobwork module
+# Groups intents and concepts for better RAG retrieval
+
+semantic_clusters:
+  operational_management:
+    description: "Core operational activities and management"
+    primary_intents:
+      - "jobwork-summary"
+      - "material-flow-tracking"
+    related_concepts:
+      - "jobwork lifecycle"
+      - "material reconciliation"
+      - "production tracking"
+      - "workflow management"
+    keywords:
+      - "jobwork"
+      - "production"
+      - "workflow"
+      - "operations"
+      - "tracking"
+      - "management"
+      - "summary"
+      - "overview"
+    embedding_weight: 1.0
+
+  quality_assurance:
+    description: "Quality control and compliance monitoring"
+    primary_intents:
+      - "qc-monitoring"
+    related_concepts:
+      - "quality control"
+      - "rejection analysis"
+      - "compliance tracking"
+      - "inspection processes"
+    keywords:
+      - "quality"
+      - "qc"
+      - "rejection"
+      - "compliance"
+      - "inspection"
+      - "approval"
+      - "defect"
+      - "standard"
+    embedding_weight: 0.9
+
+  supplier_management:
+    description: "Vendor performance and relationship management"
+    primary_intents:
+      - "vendor-performance"
+    related_concepts:
+      - "supplier evaluation"
+      - "vendor scorecard"
+      - "performance metrics"
+      - "supplier relationship"
+    keywords:
+      - "vendor"
+      - "supplier"
+      - "performance"
+      - "evaluation"
+      - "scorecard"
+      - "rating"
+      - "partnership"
+      - "relationship"
+    embedding_weight: 0.9
+
+  risk_management:
+    description: "Risk assessment and delay analysis"
+    primary_intents:
+      - "overdue-analysis"
+    related_concepts:
+      - "delay tracking"
+      - "risk assessment"
+      - "timeline management"
+      - "bottleneck identification"
+    keywords:
+      - "overdue"
+      - "delay"
+      - "risk"
+      - "timeline"
+      - "bottleneck"
+      - "critical"
+      - "urgent"
+      - "escalation"
+    embedding_weight: 0.8
+
+# Cross-intent relationships
+intent_relationships:
+  jobwork_summary:
+    strongly_related:
+      - intent: "material-flow-tracking"
+        relationship: "jobwork contains material flow"
+        similarity_score: 0.85
+      - intent: "overdue-analysis"
+        relationship: "jobwork can be overdue"
+        similarity_score: 0.75
+    
+    moderately_related:
+      - intent: "vendor-performance"
+        relationship: "jobwork assigned to vendor"
+        similarity_score: 0.65
+      - intent: "qc-monitoring"
+        relationship: "jobwork has quality requirements"
+        similarity_score: 0.60
+
+  material_flow_tracking:
+    strongly_related:
+      - intent: "jobwork-summary"
+        relationship: "material flow part of jobwork"
+        similarity_score: 0.85
+      - intent: "qc-monitoring"
+        relationship: "material flow includes quality checks"
+        similarity_score: 0.70
+    
+    moderately_related:
+      - intent: "vendor-performance"
+        relationship: "material flow affects vendor performance"
+        similarity_score: 0.60
+      - intent: "overdue-analysis"
+        relationship: "material delays cause overdue"
+        similarity_score: 0.55
+
+  vendor_performance:
+    strongly_related:
+      - intent: "qc-monitoring"
+        relationship: "quality is key performance metric"
+        similarity_score: 0.80
+      - intent: "overdue-analysis"
+        relationship: "delays affect vendor performance"
+        similarity_score: 0.75
+    
+    moderately_related:
+      - intent: "jobwork-summary"
+        relationship: "performance based on jobwork execution"
+        similarity_score: 0.65
+      - intent: "material-flow-tracking"
+        relationship: "material handling affects performance"
+        similarity_score: 0.60
+
+  qc_monitoring:
+    strongly_related:
+      - intent: "vendor-performance"
+        relationship: "quality metrics drive performance"
+        similarity_score: 0.80
+      - intent: "material-flow-tracking"
+        relationship: "quality checks in material flow"
+        similarity_score: 0.70
+    
+    moderately_related:
+      - intent: "jobwork-summary"
+        relationship: "quality status part of jobwork"
+        similarity_score: 0.60
+      - intent: "overdue-analysis"
+        relationship: "quality issues can cause delays"
+        similarity_score: 0.50
+
+  overdue_analysis:
+    strongly_related:
+      - intent: "vendor-performance"
+        relationship: "delays impact vendor performance"
+        similarity_score: 0.75
+      - intent: "jobwork-summary"
+        relationship: "overdue status part of jobwork"
+        similarity_score: 0.75
+    
+    moderately_related:
+      - intent: "material-flow-tracking"
+        relationship: "material delays cause overdue"
+        similarity_score: 0.55
+      - intent: "qc-monitoring"
+        relationship: "quality issues can cause delays"
+        similarity_score: 0.50
+
+# Concept hierarchies
+concept_hierarchies:
+  jobwork_concepts:
+    root: "jobwork"
+    children:
+      - concept: "jobwork_lifecycle"
+        children:
+          - "creation"
+          - "approval"
+          - "execution"
+          - "delivery"
+          - "completion"
+      - concept: "jobwork_types"
+        children:
+          - "cutting"
+          - "stitching"
+          - "finishing"
+          - "embellishment"
+      - concept: "jobwork_status"
+        children:
+          - "draft"
+          - "approved"
+          - "in_progress"
+          - "completed"
+          - "cancelled"
+
+  material_concepts:
+    root: "material_flow"
+    children:
+      - concept: "material_types"
+        children:
+          - "fabric"
+          - "accessory"
+          - "trim"
+          - "packaging"
+      - concept: "flow_stages"
+        children:
+          - "planning"
+          - "dispatch"
+          - "receipt"
+          - "processing"
+          - "output"
+      - concept: "reconciliation"
+        children:
+          - "input_tracking"
+          - "output_tracking"
+          - "waste_accounting"
+          - "variance_analysis"
+
+  quality_concepts:
+    root: "quality_control"
+    children:
+      - concept: "qc_stages"
+        children:
+          - "incoming_inspection"
+          - "in_process_monitoring"
+          - "final_inspection"
+      - concept: "quality_metrics"
+        children:
+          - "acceptance_rate"
+          - "rejection_rate"
+          - "quality_score"
+          - "defect_rate"
+      - concept: "quality_outcomes"
+        children:
+          - "approved"
+          - "rejected"
+          - "conditional_accept"
+          - "rework_required"
+
+  performance_concepts:
+    root: "vendor_performance"
+    children:
+      - concept: "performance_dimensions"
+        children:
+          - "quality_performance"
+          - "delivery_performance"
+          - "cost_performance"
+          - "service_performance"
+      - concept: "performance_metrics"
+        children:
+          - "on_time_delivery"
+          - "quality_score"
+          - "cost_variance"
+          - "responsiveness"
+      - concept: "performance_grades"
+        children:
+          - "excellent"
+          - "good"
+          - "acceptable"
+          - "poor"
+
+# Entity embeddings
+entity_embeddings:
+  business_entities:
+    jobwork:
+      synonyms: ["job work", "work order", "production order"]
+      related_terms: ["manufacturing", "outsourcing", "subcontracting"]
+      context_keywords: ["supplier", "delivery", "quality", "timeline"]
+    
+    supplier:
+      synonyms: ["vendor", "contractor", "partner"]
+      related_terms: ["manufacturer", "producer", "service provider"]
+      context_keywords: ["performance", "quality", "delivery", "cost"]
+    
+    material:
+      synonyms: ["raw material", "component", "input"]
+      related_terms: ["fabric", "accessory", "trim", "packaging"]
+      context_keywords: ["flow", "tracking", "reconciliation", "waste"]
+    
+    quality:
+      synonyms: ["qc", "inspection", "compliance"]
+      related_terms: ["standard", "specification", "requirement"]
+      context_keywords: ["acceptance", "rejection", "approval", "defect"]
+
+  process_entities:
+    delivery:
+      synonyms: ["shipment", "dispatch", "transport"]
+      related_terms: ["logistics", "challan", "receipt"]
+      context_keywords: ["date", "delay", "on-time", "tracking"]
+    
+    grn:
+      synonyms: ["goods receipt", "receipt note", "inward"]
+      related_terms: ["receiving", "inspection", "acceptance"]
+      context_keywords: ["quality", "quantity", "approval", "rejection"]
+    
+    performance:
+      synonyms: ["metrics", "evaluation", "assessment"]
+      related_terms: ["scorecard", "rating", "benchmark"]
+      context_keywords: ["quality", "delivery", "cost", "service"]
+
+# Contextual embeddings
+contextual_patterns:
+  temporal_context:
+    patterns:
+      - "this month"
+      - "last quarter"
+      - "year to date"
+      - "overdue"
+      - "upcoming"
+      - "recent"
+    embedding_boost: 0.2
+  
+  urgency_context:
+    patterns:
+      - "critical"
+      - "urgent"
+      - "high priority"
+      - "immediate"
+      - "escalate"
+    embedding_boost: 0.3
+  
+  comparison_context:
+    patterns:
+      - "compare"
+      - "versus"
+      - "benchmark"
+      - "top performing"
+      - "worst performing"
+    embedding_boost: 0.25
+
+# Semantic search optimization
+search_optimization:
+  query_expansion:
+    jobwork_queries:
+      base_terms: ["jobwork", "job work"]
+      expanded_terms: ["production order", "work order", "manufacturing order"]
+    
+    supplier_queries:
+      base_terms: ["supplier", "vendor"]
+      expanded_terms: ["contractor", "partner", "manufacturer"]
+    
+    quality_queries:
+      base_terms: ["quality", "qc"]
+      expanded_terms: ["inspection", "compliance", "standard"]
+  
+  intent_boosting:
+    high_confidence_patterns:
+      - pattern: "track material"
+        intent: "material-flow-tracking"
+        boost: 0.9
+      - pattern: "vendor performance"
+        intent: "vendor-performance"
+        boost: 0.9
+      - pattern: "overdue"
+        intent: "overdue-analysis"
+        boost: 0.8
+      - pattern: "quality"
+        intent: "qc-monitoring"
+        boost: 0.8
+
+# Vector space configuration
+vector_configuration:
+  embedding_dimensions: 768
+  similarity_threshold: 0.7
+  max_results: 10
+  
+  clustering_parameters:
+    min_cluster_size: 3
+    max_cluster_size: 15
+    similarity_threshold: 0.75
+  
+  retrieval_strategy:
+    primary: "semantic_similarity"
+    fallback: "keyword_matching"
+    hybrid_weight: 0.7  # 70% semantic, 30% keyword
+
+# Training data patterns
+training_patterns:
+  positive_examples:
+    jobwork_summary:
+      - "show me jobwork details"
+      - "jobwork overview"
+      - "list all jobworks"
+      - "jobwork status report"
+    
+    material_flow:
+      - "track material flow"
+      - "material reconciliation"
+      - "where is my material"
+      - "delivery status"
+    
+    vendor_performance:
+      - "supplier performance"
+      - "vendor scorecard"
+      - "how is supplier performing"
+      - "vendor evaluation"
+    
+    quality_monitoring:
+      - "quality metrics"
+      - "rejection analysis"
+      - "qc status"
+      - "quality performance"
+    
+    overdue_analysis:
+      - "overdue jobworks"
+      - "delayed deliveries"
+      - "what is overdue"
+      - "delay analysis"
+
+  negative_examples:
+    # Examples that should NOT match certain intents
+    inventory_queries:
+      - "stock levels"
+      - "inventory count"
+      - "warehouse status"
+    
+    financial_queries:
+      - "payment status"
+      - "invoice details"
+      - "cost analysis"
+    
+    hr_queries:
+      - "employee performance"
+      - "staff allocation"
+      - "team productivity"

@@ -1,0 +1,444 @@
+# Deployment configurations for Jobwork module RAG system
+# Defines deployment parameters and environment settings
+
+deployment_environments:
+  development:
+    description: "Development environment for testing and debugging"
+    infrastructure:
+      compute:
+        instance_type: "t3.medium"
+        cpu_cores: 2
+        memory_gb: 4
+        storage_gb: 50
+      
+      database:
+        type: "postgresql"
+        version: "14.9"
+        instance_class: "db.t3.micro"
+        storage_gb: 20
+        backup_retention: 7
+      
+      vector_store:
+        type: "pinecone"
+        environment: "development"
+        index_name: "jobwork-dev"
+        dimensions: 3072
+        metric: "cosine"
+        replicas: 1
+    
+    configuration:
+      api_rate_limit: 100  # requests per minute
+      cache_ttl: 300  # 5 minutes
+      log_level: "DEBUG"
+      enable_metrics: true
+      enable_tracing: true
+    
+    security:
+      authentication: "basic"
+      encryption: false
+      cors_enabled: true
+      allowed_origins: ["http://localhost:3000", "http://localhost:8080"]
+
+  staging:
+    description: "Staging environment for pre-production testing"
+    infrastructure:
+      compute:
+        instance_type: "t3.large"
+        cpu_cores: 2
+        memory_gb: 8
+        storage_gb: 100
+        auto_scaling:
+          min_instances: 1
+          max_instances: 3
+          target_cpu: 70
+      
+      database:
+        type: "postgresql"
+        version: "14.9"
+        instance_class: "db.t3.small"
+        storage_gb: 100
+        backup_retention: 14
+        multi_az: false
+      
+      vector_store:
+        type: "pinecone"
+        environment: "staging"
+        index_name: "jobwork-staging"
+        dimensions: 3072
+        metric: "cosine"
+        replicas: 1
+        pods: 1
+    
+    configuration:
+      api_rate_limit: 500  # requests per minute
+      cache_ttl: 1800  # 30 minutes
+      log_level: "INFO"
+      enable_metrics: true
+      enable_tracing: true
+      health_check_interval: 30
+    
+    security:
+      authentication: "jwt"
+      encryption: true
+      cors_enabled: true
+      allowed_origins: ["https://staging.erp.company.com"]
+      ssl_certificate: "staging-cert"
+
+  production:
+    description: "Production environment for live operations"
+    infrastructure:
+      compute:
+        instance_type: "c5.xlarge"
+        cpu_cores: 4
+        memory_gb: 8
+        storage_gb: 200
+        auto_scaling:
+          min_instances: 2
+          max_instances: 10
+          target_cpu: 60
+          scale_up_cooldown: 300
+          scale_down_cooldown: 600
+      
+      database:
+        type: "postgresql"
+        version: "14.9"
+        instance_class: "db.r5.large"
+        storage_gb: 500
+        backup_retention: 30
+        multi_az: true
+        read_replicas: 2
+        encryption_at_rest: true
+      
+      vector_store:
+        type: "pinecone"
+        environment: "production"
+        index_name: "jobwork-prod"
+        dimensions: 3072
+        metric: "cosine"
+        replicas: 2
+        pods: 2
+        shards: 1
+      
+      load_balancer:
+        type: "application"
+        scheme: "internet-facing"
+        health_check_path: "/health"
+        health_check_interval: 30
+        healthy_threshold: 2
+        unhealthy_threshold: 5
+    
+    configuration:
+      api_rate_limit: 2000  # requests per minute
+      cache_ttl: 3600  # 1 hour
+      log_level: "WARN"
+      enable_metrics: true
+      enable_tracing: false  # Performance optimization
+      health_check_interval: 15
+      request_timeout: 30
+    
+    security:
+      authentication: "oauth2"
+      encryption: true
+      cors_enabled: false
+      ssl_certificate: "production-cert"
+      waf_enabled: true
+      ddos_protection: true
+
+# Container configurations
+containerization:
+  docker:
+    base_image: "python:3.11-slim"
+    working_directory: "/app"
+    exposed_ports: [8000]
+    
+    build_args:
+      - "PYTHON_VERSION=3.11"
+      - "POETRY_VERSION=1.6.1"
+    
+    environment_variables:
+      - "PYTHONPATH=/app"
+      - "PYTHONUNBUFFERED=1"
+      - "ENVIRONMENT=${ENVIRONMENT}"
+    
+    health_check:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30
+      timeout: 10
+      retries: 3
+      start_period: 40
+  
+  kubernetes:
+    namespace: "jobwork-rag"
+    
+    deployment:
+      replicas: 2
+      strategy:
+        type: "RollingUpdate"
+        rolling_update:
+          max_surge: 1
+          max_unavailable: 0
+      
+      resources:
+        requests:
+          cpu: "500m"
+          memory: "1Gi"
+        limits:
+          cpu: "2000m"
+          memory: "4Gi"
+      
+      probes:
+        liveness:
+          http_get:
+            path: "/health"
+            port: 8000
+          initial_delay_seconds: 30
+          period_seconds: 10
+        
+        readiness:
+          http_get:
+            path: "/ready"
+            port: 8000
+          initial_delay_seconds: 5
+          period_seconds: 5
+    
+    service:
+      type: "ClusterIP"
+      port: 80
+      target_port: 8000
+    
+    ingress:
+      enabled: true
+      class: "nginx"
+      annotations:
+        nginx.ingress.kubernetes.io/rate-limit: "100"
+        nginx.ingress.kubernetes.io/ssl-redirect: "true"
+
+# CI/CD Pipeline
+cicd_pipeline:
+  source_control:
+    repository: "git@github.com:company/jobwork-rag.git"
+    main_branch: "main"
+    develop_branch: "develop"
+  
+  build_stages:
+    1_code_quality:
+      - "lint_python"
+      - "type_check"
+      - "security_scan"
+      - "dependency_check"
+    
+    2_testing:
+      - "unit_tests"
+      - "integration_tests"
+      - "performance_tests"
+      - "rag_accuracy_tests"
+    
+    3_build:
+      - "build_docker_image"
+      - "vulnerability_scan"
+      - "image_signing"
+    
+    4_deployment:
+      - "deploy_to_staging"
+      - "smoke_tests"
+      - "approval_gate"
+      - "deploy_to_production"
+  
+  deployment_strategy:
+    type: "blue_green"
+    rollback_enabled: true
+    health_check_timeout: 300
+    traffic_shift_percentage: 10  # Initial traffic to new version
+    
+  quality_gates:
+    code_coverage: 80
+    security_score: "A"
+    performance_regression: 5  # Max 5% degradation
+    rag_accuracy: 85  # Minimum 85% accuracy
+
+# Monitoring and observability
+monitoring:
+  metrics:
+    collection_interval: 15  # seconds
+    retention_period: 90  # days
+    
+    application_metrics:
+      - "request_count"
+      - "request_duration"
+      - "error_rate"
+      - "rag_accuracy"
+      - "intent_classification_accuracy"
+      - "response_relevance_score"
+    
+    infrastructure_metrics:
+      - "cpu_utilization"
+      - "memory_utilization"
+      - "disk_utilization"
+      - "network_io"
+      - "database_connections"
+    
+    business_metrics:
+      - "queries_per_intent"
+      - "user_satisfaction_score"
+      - "query_resolution_time"
+      - "fallback_rate"
+  
+  logging:
+    level: "INFO"
+    format: "json"
+    retention_period: 30  # days
+    
+    log_types:
+      - "application_logs"
+      - "access_logs"
+      - "error_logs"
+      - "audit_logs"
+      - "performance_logs"
+  
+  alerting:
+    channels:
+      - "slack"
+      - "email"
+      - "pagerduty"
+    
+    alert_rules:
+      high_error_rate:
+        condition: "error_rate > 5%"
+        duration: "5m"
+        severity: "critical"
+      
+      slow_response_time:
+        condition: "avg_response_time > 5s"
+        duration: "10m"
+        severity: "warning"
+      
+      low_accuracy:
+        condition: "rag_accuracy < 80%"
+        duration: "15m"
+        severity: "warning"
+      
+      high_cpu_usage:
+        condition: "cpu_utilization > 80%"
+        duration: "10m"
+        severity: "warning"
+
+# Backup and disaster recovery
+backup_strategy:
+  database_backups:
+    frequency: "daily"
+    retention: 30  # days
+    encryption: true
+    cross_region_replication: true
+  
+  vector_store_backups:
+    frequency: "weekly"
+    retention: 12  # weeks
+    metadata_backup: true
+  
+  configuration_backups:
+    frequency: "on_change"
+    retention: 90  # days
+    version_control: true
+  
+  disaster_recovery:
+    rto: 4  # hours (Recovery Time Objective)
+    rpo: 1  # hour (Recovery Point Objective)
+    backup_regions: ["us-west-2", "eu-west-1"]
+    automated_failover: true
+
+# Performance optimization
+performance_optimization:
+  caching:
+    layers:
+      - "application_cache"
+      - "database_query_cache"
+      - "vector_search_cache"
+      - "cdn_cache"
+    
+    strategies:
+      application_cache:
+        type: "redis"
+        ttl: 3600  # 1 hour
+        max_memory: "2gb"
+      
+      vector_search_cache:
+        type: "in_memory"
+        ttl: 1800  # 30 minutes
+        max_entries: 10000
+  
+  database_optimization:
+    connection_pooling:
+      min_connections: 5
+      max_connections: 20
+      idle_timeout: 300
+    
+    query_optimization:
+      enable_query_cache: true
+      slow_query_threshold: 1000  # ms
+      explain_analyze_enabled: true
+  
+  api_optimization:
+    compression: "gzip"
+    keep_alive: true
+    request_batching: true
+    response_streaming: false
+
+# Security configurations
+security:
+  authentication:
+    methods: ["oauth2", "jwt", "api_key"]
+    token_expiry: 3600  # 1 hour
+    refresh_token_expiry: 86400  # 24 hours
+  
+  authorization:
+    rbac_enabled: true
+    permissions:
+      - "jobwork.read"
+      - "jobwork.write"
+      - "vendor.read"
+      - "quality.read"
+      - "admin.all"
+  
+  data_protection:
+    encryption_at_rest: true
+    encryption_in_transit: true
+    pii_masking: true
+    audit_logging: true
+  
+  network_security:
+    vpc_enabled: true
+    private_subnets: true
+    security_groups:
+      - "allow_https_443"
+      - "allow_http_80"
+      - "allow_ssh_22"  # Admin access only
+    
+    firewall_rules:
+      - "block_suspicious_ips"
+      - "rate_limit_by_ip"
+      - "geo_blocking"
+
+# Cost optimization
+cost_optimization:
+  resource_scheduling:
+    dev_environment:
+      shutdown_schedule: "weekends"
+      scale_down_schedule: "after_hours"
+    
+    staging_environment:
+      scale_down_schedule: "nights"
+  
+  storage_optimization:
+    log_compression: true
+    old_data_archival: true
+    unused_resource_cleanup: true
+  
+  monitoring:
+    cost_alerts:
+      monthly_budget: 5000  # USD
+      alert_thresholds: [50, 80, 95]  # Percentage of budget
+    
+    resource_utilization:
+      cpu_threshold: 70
+      memory_threshold: 80
+      storage_threshold: 85

@@ -1,0 +1,288 @@
+intent: jobwork_summary
+description: >
+  Comprehensive jobwork overview including basic details, supplier information, line items, 
+  financial summary, delivery status, and current progress. This provides a complete 
+  360-degree view of jobwork operations for reporting and decision making.
+
+trigger_type: SQL
+
+sql_template: |
+  SELECT 
+    -- Core Jobwork Information
+    j."JobworkId",
+    j."CreationDate",
+    j."Status" as JobworkStatus,
+    j."DeliveryDate",
+    j."DeliveryDateRemarks",
+    j."Currency",
+    j."IsFullfiled",
+    
+    -- Financial Information
+    j."SubTotal",
+    j."Total",
+    j."DiscountValue",
+    j."DiscountType",
+    j."DiscountTotal",
+    j."AdjustmentAmount",
+    j."AdjustmentInfo",
+    
+    -- Supplier Information
+    s."SupplierId",
+    s."CompanyName" as SupplierName,
+    s."SupplierCode",
+    s."FirstName" as SupplierFirstName,
+    s."LastName" as SupplierLastName,
+    s."PrimaryPhone" as SupplierPhone,
+    s."CompanyEmail" as SupplierEmail,
+    s."City" as SupplierCity,
+    s."State" as SupplierState,
+    
+    -- Department Information
+    d."DepartmentId",
+    d."Name" as DepartmentName,
+    
+    -- Jobwork Type Information
+    jt."JobworkTypeId",
+    jt."Name" as JobworkTypeName,
+    
+    -- Point of Contacts
+    vendor_poc."FirstName" as VendorPocFirstName,
+    vendor_poc."LastName" as VendorPocLastName,
+    vendor_poc."Email" as VendorPocEmail,
+    vendor_poc."Phone" as VendorPocPhone,
+    
+    -- Created/Modified Information
+    created_user."FirstName" as CreatedByFirstName,
+    created_user."LastName" as CreatedByLastName,
+    j."createdAt" as CreatedAt,
+    modified_user."FirstName" as ModifiedByFirstName,
+    modified_user."LastName" as ModifiedByLastName,
+    j."updatedAt" as UpdatedAt,
+    
+    -- Line Items Summary
+    COUNT(DISTINCT jli."JobworkLineItemId") as TotalLineItems,
+    SUM(jli."Quantity") as TotalQuantity,
+    COUNT(DISTINCT CASE WHEN jli."LineItemType" = 'FABRIC' THEN jli."JobworkLineItemId" END) as FabricItems,
+    COUNT(DISTINCT CASE WHEN jli."LineItemType" = 'ACCESSORY' THEN jli."JobworkLineItemId" END) as AccessoryItems,
+    COUNT(DISTINCT CASE WHEN jli."LineItemType" = 'SERVICE' THEN jli."JobworkLineItemId" END) as ServiceItems,
+    
+    -- Delivery Status Analysis
+    CASE 
+      WHEN j."DeliveryDate" < CURRENT_DATE AND j."IsFullfiled" = false THEN 'OVERDUE'
+      WHEN j."DeliveryDate" >= CURRENT_DATE AND j."IsFullfiled" = false THEN 'ON_TRACK'
+      WHEN j."IsFullfiled" = true THEN 'COMPLETED'
+      ELSE 'UNKNOWN'
+    END as DeliveryStatus,
+    
+    CASE 
+      WHEN j."DeliveryDate" < CURRENT_DATE AND j."IsFullfiled" = false 
+      THEN EXTRACT(DAYS FROM (CURRENT_DATE - j."DeliveryDate"))
+      ELSE 0
+    END as DelayDays,
+    
+    -- Progress Indicators
+    CASE 
+      WHEN j."Status" = 'DRAFT' THEN 0
+      WHEN j."Status" = 'APPROVED' THEN 25
+      WHEN j."Status" = 'IN_PROGRESS' THEN 50
+      WHEN j."Status" = 'COMPLETED' THEN 100
+      ELSE 0
+    END as ProgressPercentage,
+    
+    -- Linked Resources Count
+    COUNT(DISTINCT jlr."JobworkLinkedResourceId") as LinkedResourcesCount,
+    
+    -- GRN and Delivery Challan Status
+    COUNT(DISTINCT dc."DeliveryChallanId") as DeliveryChallansCount,
+    COUNT(DISTINCT g."GRNId") as GRNsCount,
+    
+    -- Quality Status Summary
+    COUNT(DISTINCT CASE WHEN g."QcStatus" = 'QC_COMPLETE' THEN g."GRNId" END) as QCCompletedGRNs,
+    COUNT(DISTINCT CASE WHEN g."QcStatus" = 'QC_PENDING' THEN g."GRNId" END) as QCPendingGRNs,
+    COUNT(DISTINCT CASE WHEN g."QcStatus" IN ('REJECTED', 'PARTIALLY_REJECTED') THEN g."GRNId" END) as QCRejectedGRNs
+    
+  FROM "Jobworks" j
+  INNER JOIN "Suppliers" s ON j."SupplierId" = s."SupplierId"
+  LEFT JOIN "Departments" d ON j."DepartmentId" = d."DepartmentId"
+  LEFT JOIN "JobworkTypes" jt ON j."JobworkTypeId" = jt."JobworkTypeId"
+  LEFT JOIN "Users" vendor_poc ON j."VendorPocId" = vendor_poc."id"
+  LEFT JOIN "Users" created_user ON j."CreatedBy" = created_user."id"
+  LEFT JOIN "Users" modified_user ON j."ModifiedBy" = modified_user."id"
+  LEFT JOIN "JobworkLineItems" jli ON j."JobworkId" = jli."JobworkId"
+  LEFT JOIN "JobworkLinkedResources" jlr ON j."JobworkId" = jlr."JobworkId"
+  LEFT JOIN "DeliveryChallans" dc ON j."SupplierId" = dc."SupplierId" 
+    AND dc."CustomerType" = 'Supplier' 
+    AND dc."IsActive" = true
+  LEFT JOIN "GRNs" g ON j."SupplierId" = g."SupplierId" 
+    AND g."CustomerType" = 'Supplier' 
+    AND g."IsActive" = true
+  
+  WHERE j."IsActive" = true 
+    AND s."IsActive" = true
+    {jobwork_filter}
+    {supplier_filter}
+    {status_filter}
+    {department_filter}
+    {date_filter}
+    {overdue_filter}
+  
+  GROUP BY 
+    j."JobworkId", j."CreationDate", j."Status", j."DeliveryDate", j."DeliveryDateRemarks",
+    j."Currency", j."IsFullfiled", j."SubTotal", j."Total", j."DiscountValue", j."DiscountType",
+    j."DiscountTotal", j."AdjustmentAmount", j."AdjustmentInfo", j."createdAt", j."updatedAt",
+    s."SupplierId", s."CompanyName", s."SupplierCode", s."FirstName", s."LastName", 
+    s."PrimaryPhone", s."CompanyEmail", s."City", s."State",
+    d."DepartmentId", d."Name",
+    jt."JobworkTypeId", jt."Name",
+    vendor_poc."FirstName", vendor_poc."LastName", vendor_poc."Email", vendor_poc."Phone",
+    created_user."FirstName", created_user."LastName",
+    modified_user."FirstName", modified_user."LastName"
+  
+  ORDER BY j."CreationDate" DESC, j."JobworkId" DESC
+
+inputs:
+  - name: jobwork_id
+    type: integer
+    required: false
+    description: "Specific jobwork ID to retrieve"
+    sql_condition: "AND j.JobworkId = {jobwork_id}"
+    
+  - name: supplier_id
+    type: integer
+    required: false
+    description: "Filter by specific supplier"
+    sql_condition: "AND j.SupplierId = {supplier_id}"
+    
+  - name: status
+    type: string
+    required: false
+    description: "Filter by jobwork status (DRAFT, APPROVED, IN_PROGRESS, COMPLETED, CANCELLED)"
+    sql_condition: "AND j.Status = '{status}'"
+    
+  - name: department_id
+    type: integer
+    required: false
+    description: "Filter by department"
+    sql_condition: "AND j.DepartmentId = {department_id}"
+    
+  - name: start_date
+    type: date
+    required: false
+    description: "Filter jobworks created from this date"
+    sql_condition: "AND j.CreationDate >= '{start_date}'"
+    
+  - name: end_date
+    type: date
+    required: false
+    description: "Filter jobworks created up to this date"
+    sql_condition: "AND j.CreationDate <= '{end_date}'"
+    
+  - name: delivery_start_date
+    type: date
+    required: false
+    description: "Filter by delivery date range start"
+    sql_condition: "AND j.DeliveryDate >= '{delivery_start_date}'"
+    
+  - name: delivery_end_date
+    type: date
+    required: false
+    description: "Filter by delivery date range end"
+    sql_condition: "AND j.DeliveryDate <= '{delivery_end_date}'"
+    
+  - name: only_overdue
+    type: boolean
+    required: false
+    description: "Show only overdue jobworks"
+    sql_condition: "AND j.DeliveryDate < CURRENT_DATE AND j.IsFullfiled = false"
+    
+  - name: min_value
+    type: number
+    required: false
+    description: "Minimum jobwork total value"
+    sql_condition: "AND j.Total >= {min_value}"
+    
+  - name: max_value
+    type: number
+    required: false
+    description: "Maximum jobwork total value"
+    sql_condition: "AND j.Total <= {max_value}"
+
+aggregation_queries:
+  status_summary: |
+    SELECT 
+      j.Status,
+      COUNT(*) as JobworkCount,
+      SUM(j.Total) as TotalValue,
+      AVG(j.Total) as AvgValue,
+      COUNT(CASE WHEN j.DeliveryDate < CURRENT_DATE AND j.IsFullfiled = false THEN 1 END) as OverdueCount
+    FROM Jobworks j
+    WHERE j.IsActive = true
+    GROUP BY j.Status
+    ORDER BY JobworkCount DESC
+
+  supplier_summary: |
+    SELECT 
+      s.SupplierId,
+      s.CompanyName,
+      s.SupplierCode,
+      COUNT(j.JobworkId) as TotalJobworks,
+      SUM(j.Total) as TotalValue,
+      COUNT(CASE WHEN j.Status = 'COMPLETED' THEN 1 END) as CompletedJobworks,
+      COUNT(CASE WHEN j.DeliveryDate < CURRENT_DATE AND j.IsFullfiled = false THEN 1 END) as OverdueJobworks,
+      ROUND(AVG(CASE WHEN j.Status = 'COMPLETED' THEN 1.0 ELSE 0.0 END) * 100, 2) as CompletionRate
+    FROM Jobworks j
+    INNER JOIN Suppliers s ON j.SupplierId = s.SupplierId
+    WHERE j.IsActive = true AND s.IsActive = true
+    GROUP BY s.SupplierId, s.CompanyName, s.SupplierCode
+    ORDER BY TotalValue DESC
+
+  monthly_summary: |
+    SELECT 
+      DATE_TRUNC('month', j.CreationDate) as Month,
+      COUNT(*) as JobworksCreated,
+      SUM(j.Total) as TotalValue,
+      COUNT(CASE WHEN j.Status = 'COMPLETED' THEN 1 END) as CompletedJobworks,
+      COUNT(CASE WHEN j.DeliveryDate < CURRENT_DATE AND j.IsFullfiled = false THEN 1 END) as OverdueJobworks,
+      COUNT(DISTINCT j.SupplierId) as UniqueSuppliersCount
+    FROM Jobworks j
+    WHERE j.IsActive = true
+    GROUP BY DATE_TRUNC('month', j.CreationDate)
+    ORDER BY Month DESC
+
+  department_summary: |
+    SELECT 
+      d.DepartmentId,
+      d.DepartmentName,
+      COUNT(j.JobworkId) as TotalJobworks,
+      SUM(j.Total) as TotalValue,
+      AVG(j.Total) as AvgJobworkValue,
+      COUNT(CASE WHEN j.Status = 'IN_PROGRESS' THEN 1 END) as InProgressJobworks,
+      COUNT(CASE WHEN j.DeliveryDate < CURRENT_DATE AND j.IsFullfiled = false THEN 1 END) as OverdueJobworks
+    FROM Jobworks j
+    LEFT JOIN Departments d ON j.DepartmentId = d.DepartmentId
+    WHERE j.IsActive = true
+    GROUP BY d.DepartmentId, d.DepartmentName
+    ORDER BY TotalValue DESC
+
+output_format: table
+
+tags:
+  - jobwork_overview
+  - summary
+  - supplier_info
+  - financial_summary
+  - delivery_status
+  - progress_tracking
+  - line_items
+
+examples:
+  - "Show me jobwork summary for this month"
+  - "Get details for jobwork 1001"
+  - "List all jobworks for Kumar Textiles"
+  - "Show overdue jobworks"
+  - "Jobwork summary for cutting department"
+  - "Show all approved jobworks"
+  - "Get jobwork overview with supplier details"
+  - "List high-value jobworks above 100000"
+  - "Show recent jobworks created this week"
+  - "Jobwork status report for all suppliers"

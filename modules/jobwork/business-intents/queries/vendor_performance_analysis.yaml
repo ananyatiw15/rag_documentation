@@ -1,0 +1,365 @@
+intent: vendor_performance_analysis
+description: >
+  Comprehensive supplier performance evaluation including delivery performance, quality metrics, 
+  cost analysis, and overall scorecard. This provides data-driven insights for vendor management, 
+  contract negotiations, and supplier relationship optimization.
+
+trigger_type: SQL
+
+sql_template: |
+  SELECT 
+    -- Supplier Information
+    s."SupplierId",
+    s."CompanyName" as SupplierName,
+    s."SupplierCode",
+    s."FirstName" as ContactFirstName,
+    s."LastName" as ContactLastName,
+    s."PrimaryPhone",
+    s."CompanyEmail",
+    s."City",
+    s."State",
+    s."Country",
+    
+    -- Jobwork Performance Metrics
+    COUNT(DISTINCT j."JobworkId") as TotalJobworks,
+    SUM(j."Total") as TotalJobworkValue,
+    AVG(j."Total") as AvgJobworkValue,
+    
+    -- Status Distribution
+    COUNT(CASE WHEN j."Status" = 'COMPLETED' THEN 1 END) as CompletedJobworks,
+    COUNT(CASE WHEN j."Status" = 'IN_PROGRESS' THEN 1 END) as InProgressJobworks,
+    COUNT(CASE WHEN j."Status" = 'APPROVED' THEN 1 END) as ApprovedJobworks,
+    COUNT(CASE WHEN j."Status" = 'CANCELLED' THEN 1 END) as CancelledJobworks,
+    
+    -- Delivery Performance
+    COUNT(CASE WHEN j."DeliveryDate" < CURRENT_DATE AND j."IsFullfiled" = false THEN 1 END) as OverdueJobworks,
+    COUNT(CASE WHEN j."IsFullfiled" = true THEN 1 END) as FulfilledJobworks,
+    
+    -- On-Time Delivery Calculation
+    ROUND(
+      CASE 
+        WHEN COUNT(j."JobworkId") > 0 
+        THEN (COUNT(CASE WHEN j."IsFullfiled" = true THEN 1 END) * 100.0 / COUNT(j."JobworkId"))
+        ELSE 0 
+      END, 2
+    ) as FulfillmentRate,
+    
+    ROUND(
+      CASE 
+        WHEN COUNT(j."JobworkId") > 0 
+        THEN ((COUNT(j."JobworkId") - COUNT(CASE WHEN j."DeliveryDate" < CURRENT_DATE AND j."IsFullfiled" = false THEN 1 END)) * 100.0 / COUNT(j."JobworkId"))
+        ELSE 0 
+      END, 2
+    ) as OnTimeDeliveryRate,
+    
+    -- Average Delay Calculation
+    ROUND(
+      AVG(
+        CASE 
+          WHEN j."DeliveryDate" < CURRENT_DATE AND j."IsFullfiled" = false 
+          THEN EXTRACT(DAYS FROM (CURRENT_DATE - j."DeliveryDate"))
+          ELSE 0
+        END
+      ), 2
+    ) as AvgDelayDays,
+    
+    -- Quality Performance (from GRNs)
+    COUNT(DISTINCT g."GRNId") as TotalGRNs,
+    COUNT(DISTINCT CASE WHEN g."QcStatus" = 'QC_COMPLETE' THEN g."GRNId" END) as QCCompletedGRNs,
+    COUNT(DISTINCT CASE WHEN g."QcStatus" IN ('REJECTED', 'PARTIALLY_REJECTED') THEN g."GRNId" END) as QCRejectedGRNs,
+    COUNT(DISTINCT CASE WHEN g."QcStatus" = 'QC_PENDING' THEN g."GRNId" END) as QCPendingGRNs,
+    
+    -- Quality Rate Calculation
+    ROUND(
+      CASE 
+        WHEN COUNT(DISTINCT g."GRNId") > 0 
+        THEN (COUNT(DISTINCT CASE WHEN g."QcStatus" = 'QC_COMPLETE' THEN g."GRNId" END) * 100.0 / COUNT(DISTINCT g."GRNId"))
+        ELSE 0 
+      END, 2
+    ) as QualityAcceptanceRate,
+    
+    ROUND(
+      CASE 
+        WHEN COUNT(DISTINCT g."GRNId") > 0 
+        THEN (COUNT(DISTINCT CASE WHEN g."QcStatus" IN ('REJECTED', 'PARTIALLY_REJECTED') THEN g."GRNId" END) * 100.0 / COUNT(DISTINCT g."GRNId"))
+        ELSE 0 
+      END, 2
+    ) as QualityRejectionRate,
+    
+    -- Material Flow Performance
+    COUNT(DISTINCT dc."DeliveryChallanId") as TotalDeliveryChallans,
+    COUNT(DISTINCT CASE WHEN dc."Status" = 'APPROVED' THEN dc."DeliveryChallanId" END) as ApprovedDeliveryChallans,
+    
+    -- Financial Performance
+    SUM(CASE WHEN j."Status" = 'COMPLETED' THEN j."Total" ELSE 0 END) as CompletedJobworkValue,
+    SUM(CASE WHEN j."DeliveryDate" < CURRENT_DATE AND j."IsFullfiled" = false THEN j."Total" ELSE 0 END) as OverdueJobworkValue,
+    
+    -- Cost Variance Analysis (comparing planned vs actual through GRN amounts)
+    ROUND(
+      AVG(
+        CASE 
+          WHEN j."Total" > 0 AND g."Total" IS NOT NULL 
+          THEN ABS(j."Total" - g."Total") / j."Total" * 100
+          ELSE 0
+        END
+      ), 2
+    ) as AvgCostVariancePercent,
+    
+    -- Communication and Response Metrics
+    COUNT(DISTINCT vendor_poc."id") as AssignedPOCs,
+    
+    -- Recent Activity
+    MAX(j."CreationDate") as LastJobworkDate,
+    MAX(g."DateCreated") as LastGRNDate,
+    MAX(dc."DateCreated") as LastDeliveryDate,
+    
+    -- Performance Score Calculation (weighted average)
+    ROUND(
+      (
+        -- On-time delivery (40% weight)
+        (CASE 
+          WHEN COUNT(j."JobworkId") > 0 
+          THEN ((COUNT(j."JobworkId") - COUNT(CASE WHEN j."DeliveryDate" < CURRENT_DATE AND j."IsFullfiled" = false THEN 1 END)) * 100.0 / COUNT(j."JobworkId"))
+          ELSE 0 
+        END * 0.4) +
+        
+        -- Quality acceptance (35% weight)
+        (CASE 
+          WHEN COUNT(DISTINCT g."GRNId") > 0 
+          THEN (COUNT(DISTINCT CASE WHEN g."QcStatus" = 'QC_COMPLETE' THEN g."GRNId" END) * 100.0 / COUNT(DISTINCT g."GRNId"))
+          ELSE 0 
+        END * 0.35) +
+        
+        -- Fulfillment rate (25% weight)
+        (CASE 
+          WHEN COUNT(j."JobworkId") > 0 
+          THEN (COUNT(CASE WHEN j."IsFullfiled" = true THEN 1 END) * 100.0 / COUNT(j."JobworkId"))
+          ELSE 0 
+        END * 0.25)
+      ), 2
+    ) as OverallPerformanceScore,
+    
+    -- Performance Grade
+    CASE 
+      WHEN (
+        (CASE 
+          WHEN COUNT(j."JobworkId") > 0 
+          THEN ((COUNT(j."JobworkId") - COUNT(CASE WHEN j."DeliveryDate" < CURRENT_DATE AND j."IsFullfiled" = false THEN 1 END)) * 100.0 / COUNT(j."JobworkId"))
+          ELSE 0 
+        END * 0.4) +
+        (CASE 
+          WHEN COUNT(DISTINCT g."GRNId") > 0 
+          THEN (COUNT(DISTINCT CASE WHEN g."QcStatus" = 'QC_COMPLETE' THEN g."GRNId" END) * 100.0 / COUNT(DISTINCT g."GRNId"))
+          ELSE 0 
+        END * 0.35) +
+        (CASE 
+          WHEN COUNT(j."JobworkId") > 0 
+          THEN (COUNT(CASE WHEN j."IsFullfiled" = true THEN 1 END) * 100.0 / COUNT(j."JobworkId"))
+          ELSE 0 
+        END * 0.25)
+      ) >= 90 THEN 'EXCELLENT'
+      WHEN (
+        (CASE 
+          WHEN COUNT(j."JobworkId") > 0 
+          THEN ((COUNT(j."JobworkId") - COUNT(CASE WHEN j."DeliveryDate" < CURRENT_DATE AND j."IsFullfiled" = false THEN 1 END)) * 100.0 / COUNT(j."JobworkId"))
+          ELSE 0 
+        END * 0.4) +
+        (CASE 
+          WHEN COUNT(DISTINCT g."GRNId") > 0 
+          THEN (COUNT(DISTINCT CASE WHEN g."QcStatus" = 'QC_COMPLETE' THEN g."GRNId" END) * 100.0 / COUNT(DISTINCT g."GRNId"))
+          ELSE 0 
+        END * 0.35) +
+        (CASE 
+          WHEN COUNT(j."JobworkId") > 0 
+          THEN (COUNT(CASE WHEN j."IsFullfiled" = true THEN 1 END) * 100.0 / COUNT(j."JobworkId"))
+          ELSE 0 
+        END * 0.25)
+      ) >= 75 THEN 'GOOD'
+      WHEN (
+        (CASE 
+          WHEN COUNT(j."JobworkId") > 0 
+          THEN ((COUNT(j."JobworkId") - COUNT(CASE WHEN j."DeliveryDate" < CURRENT_DATE AND j."IsFullfiled" = false THEN 1 END)) * 100.0 / COUNT(j."JobworkId"))
+          ELSE 0 
+        END * 0.4) +
+        (CASE 
+          WHEN COUNT(DISTINCT g."GRNId") > 0 
+          THEN (COUNT(DISTINCT CASE WHEN g."QcStatus" = 'QC_COMPLETE' THEN g."GRNId" END) * 100.0 / COUNT(DISTINCT g."GRNId"))
+          ELSE 0 
+        END * 0.35) +
+        (CASE 
+          WHEN COUNT(j."JobworkId") > 0 
+          THEN (COUNT(CASE WHEN j."IsFullfiled" = true THEN 1 END) * 100.0 / COUNT(j."JobworkId"))
+          ELSE 0 
+        END * 0.25)
+      ) >= 60 THEN 'ACCEPTABLE'
+      ELSE 'POOR'
+    END as PerformanceGrade
+    
+  FROM "Suppliers" s
+  LEFT JOIN "Jobworks" j ON s."SupplierId" = j."SupplierId" AND j."IsActive" = true
+  LEFT JOIN "Users" vendor_poc ON j."VendorPocId" = vendor_poc."id"
+  LEFT JOIN "GRNs" g ON s."SupplierId" = g."SupplierId" 
+    AND g."CustomerType" = 'Supplier' 
+    AND g."IsActive" = true
+  LEFT JOIN "DeliveryChallans" dc ON s."SupplierId" = dc."SupplierId" 
+    AND dc."CustomerType" = 'Supplier' 
+    AND dc."IsActive" = true
+  
+  WHERE s."IsActive" = true
+    {supplier_filter}
+    {date_filter}
+    {performance_filter}
+    {jobwork_count_filter}
+  
+  GROUP BY 
+    s."SupplierId", s."CompanyName", s."SupplierCode", s."FirstName", s."LastName",
+    s."PrimaryPhone", s."CompanyEmail", s."City", s."State", s."Country"
+  
+  HAVING COUNT(j."JobworkId") > 0  -- Only include suppliers with jobworks
+  
+  ORDER BY OverallPerformanceScore DESC, TotalJobworkValue DESC
+
+inputs:
+  - name: supplier_id
+    type: integer
+    required: false
+    description: "Specific supplier ID to analyze"
+    sql_condition: "AND s.SupplierId = {supplier_id}"
+    
+  - name: start_date
+    type: date
+    required: false
+    description: "Filter jobworks from this date onwards"
+    sql_condition: "AND j.CreationDate >= '{start_date}'"
+    
+  - name: end_date
+    type: date
+    required: false
+    description: "Filter jobworks up to this date"
+    sql_condition: "AND j.CreationDate <= '{end_date}'"
+    
+  - name: min_performance_score
+    type: number
+    required: false
+    description: "Minimum performance score threshold"
+    sql_condition: "HAVING OverallPerformanceScore >= {min_performance_score}"
+    
+  - name: performance_grade
+    type: string
+    required: false
+    description: "Filter by performance grade (EXCELLENT, GOOD, ACCEPTABLE, POOR)"
+    sql_condition: "HAVING PerformanceGrade = '{performance_grade}'"
+    
+  - name: min_jobwork_count
+    type: integer
+    required: false
+    description: "Minimum number of jobworks for analysis"
+    sql_condition: "HAVING COUNT(j.JobworkId) >= {min_jobwork_count}"
+    
+  - name: city
+    type: string
+    required: false
+    description: "Filter suppliers by city"
+    sql_condition: "AND s.City = '{city}'"
+    
+  - name: state
+    type: string
+    required: false
+    description: "Filter suppliers by state"
+    sql_condition: "AND s.State = '{state}'"
+
+aggregation_queries:
+  performance_distribution: |
+    SELECT 
+      PerformanceGrade,
+      COUNT(*) as SupplierCount,
+      ROUND(AVG(OverallPerformanceScore), 2) as AvgScore,
+      SUM(TotalJobworkValue) as TotalValue
+    FROM (
+      -- Subquery with the main performance calculation
+      SELECT 
+        s.SupplierId,
+        CASE 
+          WHEN OverallScore >= 90 THEN 'EXCELLENT'
+          WHEN OverallScore >= 75 THEN 'GOOD'
+          WHEN OverallScore >= 60 THEN 'ACCEPTABLE'
+          ELSE 'POOR'
+        END as PerformanceGrade,
+        OverallScore as OverallPerformanceScore,
+        SUM(j.Total) as TotalJobworkValue
+      FROM Suppliers s
+      LEFT JOIN Jobworks j ON s.SupplierId = j.SupplierId AND j.IsActive = true
+      LEFT JOIN GRNs g ON s.SupplierId = g.SupplierId AND g.CustomerType = 'Supplier' AND g.IsActive = true
+      WHERE s.IsActive = true
+      GROUP BY s.SupplierId
+      HAVING COUNT(j.JobworkId) > 0
+    ) perf_data
+    GROUP BY PerformanceGrade
+    ORDER BY AvgScore DESC
+
+  top_performers: |
+    SELECT 
+      s.SupplierId,
+      s.CompanyName,
+      s.SupplierCode,
+      COUNT(j.JobworkId) as TotalJobworks,
+      SUM(j.Total) as TotalValue,
+      ROUND(AVG(OnTimeDeliveryRate), 2) as OnTimeDeliveryRate,
+      ROUND(AVG(QualityAcceptanceRate), 2) as QualityAcceptanceRate,
+      ROUND(AVG(OverallPerformanceScore), 2) as PerformanceScore
+    FROM Suppliers s
+    LEFT JOIN Jobworks j ON s.SupplierId = j.SupplierId AND j.IsActive = true
+    LEFT JOIN GRNs g ON s.SupplierId = g.SupplierId AND g.CustomerType = 'Supplier' AND g.IsActive = true
+    WHERE s.IsActive = true
+    GROUP BY s.SupplierId, s.CompanyName, s.SupplierCode
+    HAVING COUNT(j.JobworkId) >= 3 AND PerformanceScore >= 80
+    ORDER BY PerformanceScore DESC, TotalValue DESC
+    LIMIT 10
+
+  monthly_performance_trend: |
+    SELECT 
+      DATE_TRUNC('month', j.CreationDate) as Month,
+      COUNT(DISTINCT s.SupplierId) as ActiveSuppliers,
+      COUNT(j.JobworkId) as TotalJobworks,
+      ROUND(AVG(
+        CASE 
+          WHEN j.DeliveryDate < CURRENT_DATE AND j.IsFullfiled = false THEN 0
+          ELSE 1
+        END
+      ) * 100, 2) as AvgOnTimeRate,
+      ROUND(AVG(
+        CASE 
+          WHEN g.QcStatus = 'QC_COMPLETE' THEN 1
+          WHEN g.QcStatus IN ('REJECTED', 'PARTIALLY_REJECTED') THEN 0
+          ELSE NULL
+        END
+      ) * 100, 2) as AvgQualityRate
+    FROM Jobworks j
+    INNER JOIN Suppliers s ON j.SupplierId = s.SupplierId
+    LEFT JOIN GRNs g ON s.SupplierId = g.SupplierId AND g.CustomerType = 'Supplier' AND g.IsActive = true
+    WHERE j.IsActive = true AND s.IsActive = true
+    GROUP BY DATE_TRUNC('month', j.CreationDate)
+    ORDER BY Month DESC
+
+output_format: table
+
+tags:
+  - vendor_performance
+  - supplier_evaluation
+  - delivery_performance
+  - quality_metrics
+  - cost_analysis
+  - scorecard
+  - supplier_ranking
+
+examples:
+  - "Show vendor performance for Kumar Textiles"
+  - "Which suppliers have the best performance scores?"
+  - "Analyze supplier delivery performance this quarter"
+  - "Show me top performing vendors"
+  - "Vendor scorecard for all suppliers"
+  - "Which suppliers have quality issues?"
+  - "Show supplier performance trends"
+  - "Compare vendor performance by region"
+  - "List underperforming suppliers"
+  - "Supplier evaluation report for contract renewal"

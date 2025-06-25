@@ -1,0 +1,488 @@
+# Real-world test scenarios for Jobwork module
+# Provides test cases with resolved inputs and expected outputs
+
+test_scenarios:
+  jobwork_summary_scenarios:
+    scenario_1:
+      name: "Get all active jobworks for a specific supplier"
+      intent: "jobwork-summary"
+      user_query: "Show me all jobworks for Kumar Textiles"
+      resolved_inputs:
+        filters:
+          supplierId: 501
+          status: ["APPROVED", "IN_PROGRESS"]
+      expected_sql_execution:
+        function_call: "getJobworkSummary"
+        parameters:
+          filters:
+            supplierId: 501
+            status: ["APPROVED", "IN_PROGRESS"]
+      expected_response_structure:
+        success: true
+        data:
+          jobworks:
+            - JobworkId: 1001
+              Status: "APPROVED"
+              Supplier:
+                CompanyName: "Kumar Textiles Pvt Ltd"
+                SupplierCode: "SUP001"
+          summary:
+            totalJobworks: 1
+            totalValue: 177000.00
+    
+    scenario_2:
+      name: "Get jobwork summary for current month"
+      intent: "jobwork-summary"
+      user_query: "Show me jobwork summary for this month"
+      resolved_inputs:
+        filters:
+          dateRange:
+            startDate: "2024-06-01"
+            endDate: "2024-06-30"
+      expected_sql_execution:
+        sql_template: "jobwork-summary"
+        parameters:
+          start_date: "2024-06-01"
+          end_date: "2024-06-30"
+      expected_response_structure:
+        success: true
+        data:
+          jobworks: []
+          summary:
+            totalJobworks: 0
+            totalValue: 0.00
+            statusBreakdown:
+              APPROVED: 0
+              IN_PROGRESS: 0
+
+  material_flow_scenarios:
+    scenario_1:
+      name: "Track material flow for specific jobwork"
+      intent: "material-flow-tracking"
+      user_query: "Track material flow for jobwork 1001"
+      resolved_inputs:
+        jobworkId: 1001
+        includeHistory: true
+      expected_sql_execution:
+        sql_template: "material-flow-tracking"
+        parameters:
+          jobwork_id: 1001
+      expected_response_structure:
+        success: true
+        data:
+          jobworkInfo:
+            JobworkId: 1001
+            Status: "APPROVED"
+          materialFlow:
+            - lineItemId: 2001
+              itemDescription: "Cotton blend fabric for shirts"
+              plannedQuantity: 500.00
+              deliveredQuantity: 500.00
+              receivedQuantity: 495.00
+              acceptedQuantity: 490.00
+              rejectedQuantity: 5.00
+              flowStatus: "COMPLETED"
+          reconciliation:
+            totalPlanned: 500.00
+            totalDelivered: 500.00
+            totalReceived: 495.00
+            reconciliationStatus: "VARIANCE"
+    
+    scenario_2:
+      name: "Material reconciliation for supplier"
+      intent: "material-flow-tracking"
+      user_query: "Show material reconciliation for Kumar Textiles"
+      resolved_inputs:
+        supplierId: 501
+        dateRange:
+          startDate: "2024-01-01"
+          endDate: "2024-06-30"
+      expected_sql_execution:
+        function_call: "getMaterialReconciliation"
+        parameters:
+          supplierId: 501
+          dateRange:
+            startDate: "2024-01-01"
+            endDate: "2024-06-30"
+      expected_response_structure:
+        success: true
+        data:
+          reconciliation:
+            totalJobworks: 2
+            totalPlanned: 2500.00
+            totalDelivered: 2480.00
+            totalReceived: 2470.00
+            totalWaste: 30.00
+            reconciliationStatus: "VARIANCE"
+
+  vendor_performance_scenarios:
+    scenario_1:
+      name: "Get performance metrics for specific vendor"
+      intent: "vendor-performance"
+      user_query: "How is Kumar Textiles performing?"
+      resolved_inputs:
+        supplierId: 501
+        dateRange:
+          startDate: "2024-01-01"
+          endDate: "2024-06-30"
+        includeComparison: true
+      expected_sql_execution:
+        sql_template: "vendor-performance"
+        parameters:
+          supplier_id: 501
+          start_date: "2024-01-01"
+          end_date: "2024-06-30"
+      expected_response_structure:
+        success: true
+        data:
+          suppliers:
+            - supplierInfo:
+                SupplierId: 501
+                CompanyName: "Kumar Textiles Pvt Ltd"
+                SupplierCode: "SUP001"
+              performanceMetrics:
+                qualityMetrics:
+                  acceptanceRate: 98.0
+                  rejectionRate: 2.0
+                  qualityScore: 8.5
+                deliveryMetrics:
+                  onTimeDeliveryRate: 95.0
+                  averageDelayDays: 1.2
+                  deliveryAccuracy: 99.0
+                overallScore: 8.7
+                performanceGrade: "EXCELLENT"
+    
+    scenario_2:
+      name: "Get top performing vendors"
+      intent: "vendor-performance"
+      user_query: "Show me top 5 performing suppliers"
+      resolved_inputs:
+        limit: 5
+        metric: "overall"
+      expected_sql_execution:
+        function_call: "getTopPerformingVendors"
+        parameters:
+          limit: 5
+          metric: "overall"
+      expected_response_structure:
+        success: true
+        data:
+          topVendors:
+            - supplierInfo:
+                SupplierId: 501
+                CompanyName: "Kumar Textiles Pvt Ltd"
+              overallScore: 8.7
+              rank: 1
+
+  qc_monitoring_scenarios:
+    scenario_1:
+      name: "Get quality metrics for supplier"
+      intent: "qc-monitoring"
+      user_query: "What is the rejection rate for Kumar Textiles?"
+      resolved_inputs:
+        supplierId: 501
+        dateRange:
+          startDate: "2024-01-01"
+          endDate: "2024-06-30"
+      expected_sql_execution:
+        sql_template: "qc-monitoring"
+        parameters:
+          supplier_id: 501
+          start_date: "2024-01-01"
+          end_date: "2024-06-30"
+      expected_response_structure:
+        success: true
+        data:
+          qualityMetrics:
+            - groupKey: "501"
+              groupName: "Kumar Textiles Pvt Ltd"
+              totalGRNs: 5
+              acceptanceRate: 98.0
+              rejectionRate: 2.0
+              qualityScore: 8.5
+              rejectionReasons:
+                - reason: "Minor color variation"
+                  count: 1
+                  percentage: 100.0
+    
+    scenario_2:
+      name: "Get quality trends for last 6 months"
+      intent: "qc-monitoring"
+      user_query: "Show quality trends for the last 6 months"
+      resolved_inputs:
+        dateRange:
+          startDate: "2024-01-01"
+          endDate: "2024-06-30"
+        groupBy: "month"
+      expected_sql_execution:
+        function_call: "getQualityTrends"
+        parameters:
+          period: "monthly"
+          dateRange:
+            startDate: "2024-01-01"
+            endDate: "2024-06-30"
+      expected_response_structure:
+        success: true
+        data:
+          qualityTrends:
+            - month: "2024-06"
+              totalGRNs: 10
+              acceptanceRate: 97.5
+              rejectionRate: 2.5
+            - month: "2024-05"
+              totalGRNs: 8
+              acceptanceRate: 98.0
+              rejectionRate: 2.0
+
+  overdue_analysis_scenarios:
+    scenario_1:
+      name: "Get all overdue jobworks"
+      intent: "overdue-analysis"
+      user_query: "Show me all overdue jobworks"
+      resolved_inputs:
+        only_overdue: true
+      expected_sql_execution:
+        sql_template: "overdue-analysis"
+        parameters:
+          only_overdue: true
+      expected_response_structure:
+        success: true
+        data:
+          overdueJobworks:
+            - jobworkInfo:
+                JobworkId: 1003
+                Status: "IN_PROGRESS"
+                DeliveryDate: "2024-05-15"
+              delayInfo:
+                delayDays: 45
+                riskLevel: "CRITICAL"
+                estimatedLoss: 85000.00
+              supplierInfo:
+                CompanyName: "Delayed Supplier Ltd"
+          summary:
+            totalOverdueJobworks: 1
+            totalOverdueValue: 85000.00
+            averageDelayDays: 45
+    
+    scenario_2:
+      name: "Get critical overdue jobworks"
+      intent: "overdue-analysis"
+      user_query: "Show me critical overdue jobworks with delay more than 30 days"
+      resolved_inputs:
+        riskLevel: "CRITICAL"
+        minDelayDays: 30
+      expected_sql_execution:
+        sql_template: "overdue-analysis"
+        parameters:
+          risk_level: "CRITICAL"
+          min_delay_days: 30
+      expected_response_structure:
+        success: true
+        data:
+          overdueJobworks:
+            - jobworkInfo:
+                JobworkId: 1003
+              delayInfo:
+                delayDays: 45
+                riskLevel: "CRITICAL"
+          summary:
+            riskDistribution:
+              critical: 1
+              high: 0
+              medium: 0
+              low: 0
+
+# Complex multi-step scenarios
+complex_scenarios:
+  scenario_1:
+    name: "Supplier performance deep dive"
+    description: "User wants comprehensive supplier analysis"
+    conversation_flow:
+      step_1:
+        user_query: "Show me vendor performance for Kumar Textiles"
+        intent: "vendor-performance"
+        resolved_inputs:
+          supplierId: 501
+        expected_response: "Performance metrics showing 8.7 overall score"
+      
+      step_2:
+        user_query: "What is their quality performance?"
+        intent: "qc-monitoring"
+        context_from_previous: 
+          supplierId: 501
+        resolved_inputs:
+          supplierId: 501
+        expected_response: "Quality metrics showing 98% acceptance rate"
+      
+      step_3:
+        user_query: "Are they causing any delays?"
+        intent: "overdue-analysis"
+        context_from_previous:
+          supplierId: 501
+        resolved_inputs:
+          supplierId: 501
+        expected_response: "No overdue jobworks for this supplier"
+
+  scenario_2:
+    name: "Jobwork lifecycle tracking"
+    description: "Track a jobwork from creation to completion"
+    conversation_flow:
+      step_1:
+        user_query: "Show me details for jobwork 1001"
+        intent: "jobwork-summary"
+        resolved_inputs:
+          jobworkId: 1001
+        expected_response: "Jobwork details with APPROVED status"
+      
+      step_2:
+        user_query: "Track material flow for this jobwork"
+        intent: "material-flow-tracking"
+        context_from_previous:
+          jobworkId: 1001
+        resolved_inputs:
+          jobworkId: 1001
+        expected_response: "Material flow showing delivery and receipt status"
+      
+      step_3:
+        user_query: "What is the quality status?"
+        intent: "qc-monitoring"
+        context_from_previous:
+          jobworkId: 1001
+        resolved_inputs:
+          jobworkId: 1001
+        expected_response: "Quality metrics for the specific jobwork"
+
+# Error handling scenarios
+error_scenarios:
+  invalid_jobwork_id:
+    user_query: "Show me jobwork 99999"
+    intent: "jobwork-summary"
+    resolved_inputs:
+      jobworkId: 99999
+    expected_error:
+      code: "JOBWORK_NOT_FOUND"
+      message: "Jobwork not found"
+      http_status: 404
+  
+  invalid_supplier_id:
+    user_query: "Show performance for supplier 99999"
+    intent: "vendor-performance"
+    resolved_inputs:
+      supplierId: 99999
+    expected_error:
+      code: "SUPPLIER_NOT_FOUND"
+      message: "Supplier not found"
+      http_status: 404
+  
+  invalid_date_range:
+    user_query: "Show jobworks from 2024-06-30 to 2024-06-01"
+    intent: "jobwork-summary"
+    resolved_inputs:
+      filters:
+        dateRange:
+          startDate: "2024-06-30"
+          endDate: "2024-06-01"
+    expected_error:
+      code: "INVALID_DATE_RANGE"
+      message: "Invalid date range provided"
+      http_status: 400
+
+# Performance test scenarios
+performance_scenarios:
+  large_dataset_query:
+    name: "Query with large result set"
+    user_query: "Show me all jobworks for the last year"
+    intent: "jobwork-summary"
+    resolved_inputs:
+      filters:
+        dateRange:
+          startDate: "2023-06-01"
+          endDate: "2024-06-01"
+    expected_behavior:
+      pagination: true
+      max_response_time: "2 seconds"
+      caching: true
+  
+  complex_aggregation:
+    name: "Complex vendor performance calculation"
+    user_query: "Show vendor performance comparison for all suppliers"
+    intent: "vendor-performance"
+    resolved_inputs:
+      includeComparison: true
+    expected_behavior:
+      async_processing: true
+      max_response_time: "5 seconds"
+      result_caching: "1 hour"
+
+# Edge case scenarios
+edge_cases:
+  empty_result_set:
+    user_query: "Show jobworks for non-existent department"
+    intent: "jobwork-summary"
+    resolved_inputs:
+      filters:
+        departmentId: 99999
+    expected_response:
+      success: true
+      data:
+        jobworks: []
+        summary:
+          totalJobworks: 0
+          totalValue: 0.00
+  
+  zero_quantity_materials:
+    user_query: "Track material flow for jobwork with zero quantities"
+    intent: "material-flow-tracking"
+    resolved_inputs:
+      jobworkId: 1004
+    expected_response:
+      success: true
+      data:
+        materialFlow:
+          - plannedQuantity: 0.00
+            deliveredQuantity: 0.00
+            flowStatus: "PENDING"
+  
+  supplier_with_no_jobworks:
+    user_query: "Show performance for new supplier"
+    intent: "vendor-performance"
+    resolved_inputs:
+      supplierId: 503
+    expected_response:
+      success: true
+      data:
+        suppliers:
+          - supplierInfo:
+              SupplierId: 503
+            performanceMetrics:
+              message: "No jobworks found for performance calculation"
+
+# Integration test scenarios
+integration_scenarios:
+  cross_module_data:
+    name: "Jobwork linked to sales order"
+    user_query: "Show jobworks linked to sales order SO/2024/001"
+    intent: "jobwork-summary"
+    resolved_inputs:
+      filters:
+        linkedSalesOrder: "SO/2024/001"
+    expected_response:
+      success: true
+      data:
+        jobworks:
+          - JobworkId: 1001
+            linkedSalesOrder: "SO/2024/001"
+  
+  inventory_impact:
+    name: "Material flow affecting inventory"
+    user_query: "Track material consumption impact on inventory"
+    intent: "material-flow-tracking"
+    resolved_inputs:
+      includeInventoryImpact: true
+    expected_response:
+      success: true
+      data:
+        inventoryImpact:
+          materialConsumed: 500.00
+          inventoryReduction: 500.00
+          currentStock: 1500.00

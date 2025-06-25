@@ -1,0 +1,253 @@
+intent: material_flow_tracking
+description: >
+  Track complete material flow lifecycle for jobworks including delivery challans sent to suppliers, 
+  GRNs received back, quantity reconciliation, and quality status. This provides end-to-end visibility 
+  of material movement from dispatch to receipt with variance analysis.
+
+trigger_type: SQL
+
+sql_template: |
+  SELECT 
+    -- Jobwork Information
+    j."JobworkId",
+    j."CreationDate" as JobworkCreationDate,
+    j."Status" as JobworkStatus,
+    j."DeliveryDate" as JobworkDeliveryDate,
+    j."Total" as JobworkTotal,
+    
+    -- Supplier Information
+    s."SupplierId",
+    s."CompanyName" as SupplierName,
+    s."SupplierCode",
+    s."PrimaryPhone" as SupplierPhone,
+    
+    -- Jobwork Line Items (Materials Planned)
+    jli."JobworkLineItemId",
+    jli."LineItemType",
+    jli."ItemType",
+    jli."ItemId",
+    jli."ItemDescription",
+    jli."Quantity" as PlannedQuantity,
+    jli."Rate" as PlannedRate,
+    jli."WastePercent" as ExpectedWastePercent,
+    jli."WasteValue" as ExpectedWasteValue,
+    jli."ActualWaste",
+    jli."DeliveryDate" as LineItemDeliveryDate,
+    
+    -- Delivery Challan Information (Materials Sent)
+    dc."DeliveryChallanId",
+    dc."Status" as DCStatus,
+    dc."DateCreated" as DCDate,
+    dc."GRNStatus" as DCGRNStatus,
+    dc."Total" as DCTotal,
+    
+    -- Delivery Challan Item Details (Actual Quantities Sent)
+    dcid."DeliveryChallanItemDetailsId",
+    dcid."Quantity" as SentQuantity,
+    dcid."Rate" as SentRate,
+    dcid."Amount" as SentAmount,
+    dcid."ReturnedQuantity" as DCReturnedQuantity,
+    
+    -- GRN Information (Materials Received Back)
+    g."GRNId",
+    g."Status" as GRNStatus,
+    g."DateCreated" as GRNDate,
+    g."QcStatus" as GRNQcStatus,
+    g."ReturnStatus" as GRNReturnStatus,
+    g."Total" as GRNTotal,
+    
+    -- GRN Item Details (Actual Quantities Received)
+    gid."GRNItemDetailsId",
+    gid."OrderedQuantity" as GRNOrderedQuantity,
+    gid."ReceivedQuantity" as GRNReceivedQuantity,
+    gid."Rate" as GRNRate,
+    gid."Amount" as GRNAmount,
+    gid."QcStatus" as ItemQcStatus,
+    gid."ReturnStatus" as ItemReturnStatus,
+    gid."ReturnedQuantity" as GRNReturnedQuantity,
+    
+    -- Material Flow Calculations
+    CASE 
+      WHEN dcid."Quantity" IS NOT NULL AND gid."ReceivedQuantity" IS NOT NULL 
+      THEN dcid."Quantity" - gid."ReceivedQuantity"
+      ELSE NULL
+    END as QuantityVariance,
+    
+    CASE 
+      WHEN dcid."Quantity" IS NOT NULL AND dcid."Quantity" > 0 AND gid."ReceivedQuantity" IS NOT NULL
+      THEN ROUND(((dcid."Quantity" - gid."ReceivedQuantity") / dcid."Quantity" * 100), 2)
+      ELSE NULL
+    END as VariancePercentage,
+    
+    -- Flow Status Classification
+    CASE 
+      WHEN dc."DeliveryChallanId" IS NULL THEN 'NOT_DISPATCHED'
+      WHEN dc."DeliveryChallanId" IS NOT NULL AND g."GRNId" IS NULL THEN 'DISPATCHED_NOT_RECEIVED'
+      WHEN g."GRNId" IS NOT NULL AND g."QcStatus" = 'QC_PENDING' THEN 'RECEIVED_QC_PENDING'
+      WHEN g."GRNId" IS NOT NULL AND g."QcStatus" = 'QC_COMPLETE' THEN 'RECEIVED_QC_COMPLETE'
+      WHEN g."GRNId" IS NOT NULL AND g."QcStatus" IN ('REJECTED', 'PARTIALLY_REJECTED') THEN 'RECEIVED_QC_REJECTED'
+      ELSE 'UNKNOWN_STATUS'
+    END as MaterialFlowStatus,
+    
+    -- Reconciliation Status
+    CASE 
+      WHEN dcid."Quantity" IS NOT NULL AND gid."ReceivedQuantity" IS NOT NULL 
+        AND ABS(dcid."Quantity" - gid."ReceivedQuantity") <= 0.01 THEN 'RECONCILED'
+      WHEN dcid."Quantity" IS NOT NULL AND gid."ReceivedQuantity" IS NOT NULL 
+        AND dcid."Quantity" > gid."ReceivedQuantity" THEN 'SHORT_RECEIVED'
+      WHEN dcid."Quantity" IS NOT NULL AND gid."ReceivedQuantity" IS NOT NULL 
+        AND dcid."Quantity" < gid."ReceivedQuantity" THEN 'EXCESS_RECEIVED'
+      WHEN dcid."Quantity" IS NOT NULL AND gid."ReceivedQuantity" IS NULL THEN 'PENDING_RECEIPT'
+      ELSE 'NOT_APPLICABLE'
+    END as ReconciliationStatus
+    
+  FROM "Jobworks" j
+  INNER JOIN "Suppliers" s ON j."SupplierId" = s."SupplierId"
+  LEFT JOIN "JobworkLineItems" jli ON j."JobworkId" = jli."JobworkId"
+  
+  -- Link to Delivery Challans (Materials sent to supplier)
+  LEFT JOIN "DeliveryChallans" dc ON j."SupplierId" = dc."SupplierId" 
+    AND dc."CustomerType" = 'Supplier' 
+    AND dc."IsActive" = true
+  LEFT JOIN "DeliveryChallanItemDetails" dcid ON dc."DeliveryChallanId" = dcid."DeliveryChallanId"
+    AND dcid."ItemType" = jli."ItemType" 
+    AND dcid."ItemId" = jli."ItemId"
+    AND dcid."IsActive" = true
+  
+  -- Link to GRNs (Materials received back from supplier)
+  LEFT JOIN "GRNs" g ON j."SupplierId" = g."SupplierId" 
+    AND g."CustomerType" = 'Supplier' 
+    AND g."IsActive" = true
+    AND g."DCId" = dc."DeliveryChallanId"
+  LEFT JOIN "GRNItemDetails" gid ON g."GRNId" = gid."GRNId"
+    AND gid."ItemType" = jli."ItemType" 
+    AND gid."ItemId" = jli."ItemId"
+    AND gid."IsActive" = true
+  
+  WHERE j."IsActive" = true 
+    AND s."IsActive" = true
+    {jobwork_filter}
+    {supplier_filter}
+    {date_filter}
+    {status_filter}
+    {item_type_filter}
+  
+  ORDER BY j."JobworkId", jli."JobworkLineItemId", dc."DateCreated", g."DateCreated"
+
+inputs:
+  - name: jobwork_id
+    type: integer
+    required: false
+    description: "Specific jobwork ID to track material flow"
+    sql_condition: "AND j.JobworkId = {jobwork_id}"
+    
+  - name: supplier_id
+    type: integer
+    required: false
+    description: "Filter by specific supplier"
+    sql_condition: "AND j.SupplierId = {supplier_id}"
+    
+  - name: start_date
+    type: date
+    required: false
+    description: "Filter jobworks created from this date"
+    sql_condition: "AND j.CreationDate >= '{start_date}'"
+    
+  - name: end_date
+    type: date
+    required: false
+    description: "Filter jobworks created up to this date"
+    sql_condition: "AND j.CreationDate <= '{end_date}'"
+    
+  - name: flow_status
+    type: string
+    required: false
+    description: "Filter by material flow status"
+    sql_condition: |
+      AND CASE 
+        WHEN dc.DeliveryChallanId IS NULL THEN 'NOT_DISPATCHED'
+        WHEN dc.DeliveryChallanId IS NOT NULL AND g.GRNId IS NULL THEN 'DISPATCHED_NOT_RECEIVED'
+        WHEN g.GRNId IS NOT NULL AND g.QcStatus = 'QC_PENDING' THEN 'RECEIVED_QC_PENDING'
+        WHEN g.GRNId IS NOT NULL AND g.QcStatus = 'QC_COMPLETE' THEN 'RECEIVED_QC_COMPLETE'
+        WHEN g.GRNId IS NOT NULL AND g.QcStatus IN ('REJECTED', 'PARTIALLY_REJECTED') THEN 'RECEIVED_QC_REJECTED'
+        ELSE 'UNKNOWN_STATUS'
+      END = '{flow_status}'
+    
+  - name: item_type
+    type: string
+    required: false
+    description: "Filter by item type (Fabric, Style, Accessory, Other)"
+    sql_condition: "AND jli.ItemType = '{item_type}'"
+
+aggregation_queries:
+  material_summary: |
+    SELECT 
+      j.JobworkId,
+      s.CompanyName as SupplierName,
+      COUNT(DISTINCT jli.JobworkLineItemId) as TotalLineItems,
+      SUM(jli.Quantity) as TotalPlannedQuantity,
+      SUM(dcid.Quantity) as TotalSentQuantity,
+      SUM(gid.ReceivedQuantity) as TotalReceivedQuantity,
+      SUM(CASE WHEN dcid.Quantity IS NOT NULL AND gid.ReceivedQuantity IS NOT NULL 
+               THEN dcid.Quantity - gid.ReceivedQuantity ELSE 0 END) as TotalVariance,
+      ROUND(AVG(CASE WHEN dcid.Quantity IS NOT NULL AND dcid.Quantity > 0 AND gid.ReceivedQuantity IS NOT NULL
+                     THEN ABS(dcid.Quantity - gid.ReceivedQuantity) / dcid.Quantity * 100 
+                     ELSE 0 END), 2) as AvgVariancePercentage
+    FROM Jobworks j
+    INNER JOIN Suppliers s ON j.SupplierId = s.SupplierId
+    LEFT JOIN JobworkLineItems jli ON j.JobworkId = jli.JobworkId
+    LEFT JOIN DeliveryChallans dc ON j.SupplierId = dc.SupplierId AND dc.CustomerType = 'Supplier' AND dc.IsActive = true
+    LEFT JOIN DeliveryChallanItemDetails dcid ON dc.DeliveryChallanId = dcid.DeliveryChallanId AND dcid.IsActive = true
+    LEFT JOIN GRNs g ON j.SupplierId = g.SupplierId AND g.CustomerType = 'Supplier' AND g.IsActive = true AND g.DCId = dc.DeliveryChallanId
+    LEFT JOIN GRNItemDetails gid ON g.GRNId = gid.GRNId AND gid.IsActive = true
+    WHERE j.IsActive = true AND s.IsActive = true
+    GROUP BY j.JobworkId, s.CompanyName
+    ORDER BY j.JobworkId
+
+  reconciliation_status_summary: |
+    SELECT 
+      CASE 
+        WHEN dcid.Quantity IS NOT NULL AND gid.ReceivedQuantity IS NOT NULL 
+          AND ABS(dcid.Quantity - gid.ReceivedQuantity) <= 0.01 THEN 'RECONCILED'
+        WHEN dcid.Quantity IS NOT NULL AND gid.ReceivedQuantity IS NOT NULL 
+          AND dcid.Quantity > gid.ReceivedQuantity THEN 'SHORT_RECEIVED'
+        WHEN dcid.Quantity IS NOT NULL AND gid.ReceivedQuantity IS NOT NULL 
+          AND dcid.Quantity < gid.ReceivedQuantity THEN 'EXCESS_RECEIVED'
+        WHEN dcid.Quantity IS NOT NULL AND gid.ReceivedQuantity IS NULL THEN 'PENDING_RECEIPT'
+        ELSE 'NOT_APPLICABLE'
+      END as ReconciliationStatus,
+      COUNT(*) as ItemCount,
+      SUM(dcid.Quantity) as TotalSentQuantity,
+      SUM(gid.ReceivedQuantity) as TotalReceivedQuantity
+    FROM JobworkLineItems jli
+    INNER JOIN Jobworks j ON jli.JobworkId = j.JobworkId
+    LEFT JOIN DeliveryChallans dc ON j.SupplierId = dc.SupplierId AND dc.CustomerType = 'Supplier' AND dc.IsActive = true
+    LEFT JOIN DeliveryChallanItemDetails dcid ON dc.DeliveryChallanId = dcid.DeliveryChallanId 
+      AND dcid.ItemType = jli.ItemType AND dcid.ItemId = jli.ItemId AND dcid.IsActive = true
+    LEFT JOIN GRNs g ON j.SupplierId = g.SupplierId AND g.CustomerType = 'Supplier' AND g.IsActive = true AND g.DCId = dc.DeliveryChallanId
+    LEFT JOIN GRNItemDetails gid ON g.GRNId = gid.GRNId 
+      AND gid.ItemType = jli.ItemType AND gid.ItemId = jli.ItemId AND gid.IsActive = true
+    WHERE j.IsActive = true
+    GROUP BY ReconciliationStatus
+    ORDER BY ItemCount DESC
+
+output_format: table
+
+tags:
+  - material_tracking
+  - reconciliation
+  - delivery_challan
+  - grn
+  - variance_analysis
+  - supplier_flow
+  - quantity_tracking
+
+examples:
+  - "Track material flow for jobwork 1001"
+  - "Show me material reconciliation for Kumar Textiles"
+  - "What materials were sent vs received for cutting jobwork?"
+  - "Show delivery challan and GRN status for jobwork 1234"
+  - "Track fabric flow for all active jobworks"
+  - "Show material variance analysis for supplier SUP001"
+  - "Which materials are pending receipt from suppliers?"
+  - "Show reconciliation status for all fabric items"

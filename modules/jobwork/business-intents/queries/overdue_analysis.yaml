@@ -1,0 +1,414 @@
+intent: overdue_analysis
+description: >
+  Comprehensive overdue jobwork analysis including delay tracking, risk assessment, financial impact, 
+  and escalation management. This provides critical insights for proactive management of delayed 
+  deliveries and supplier accountability.
+
+trigger_type: SQL
+
+sql_template: |
+  SELECT 
+    -- Core Jobwork Information
+    j."JobworkId",
+    j."CreationDate",
+    j."Status" as JobworkStatus,
+    j."DeliveryDate" as PlannedDeliveryDate,
+    j."DeliveryDateRemarks",
+    j."IsFullfiled",
+    j."Total" as JobworkValue,
+    j."Currency",
+    
+    -- Supplier Information
+    s."SupplierId",
+    s."CompanyName" as SupplierName,
+    s."SupplierCode",
+    s."FirstName" as SupplierContactFirstName,
+    s."LastName" as SupplierContactLastName,
+    s."PrimaryPhone" as SupplierPhone,
+    s."CompanyEmail" as SupplierEmail,
+    s."City" as SupplierCity,
+    s."State" as SupplierState,
+    
+    -- Department Information
+    d."DepartmentId",
+    d."Name" as DepartmentName,
+    
+    -- Jobwork Type
+    jt."JobworkTypeId",
+    jt."Name" as JobworkTypeName,
+    
+    -- Point of Contact
+    vendor_poc."FirstName" as VendorPocFirstName,
+    vendor_poc."LastName" as VendorPocLastName,
+    vendor_poc."Email" as VendorPocEmail,
+    vendor_poc."Phone" as VendorPocPhone,
+    
+    -- Delay Calculations
+    CASE 
+      WHEN j."DeliveryDate" < CURRENT_DATE AND j."IsFullfiled" = false 
+      THEN EXTRACT(DAYS FROM (CURRENT_DATE - j."DeliveryDate"))
+      ELSE 0
+    END as DelayDays,
+    
+    CASE 
+      WHEN j."DeliveryDate" < CURRENT_DATE AND j."IsFullfiled" = false 
+      THEN EXTRACT(WEEKS FROM (CURRENT_DATE - j."DeliveryDate"))
+      ELSE 0
+    END as DelayWeeks,
+    
+    -- Overdue Status Classification
+    CASE 
+      WHEN j."IsFullfiled" = true THEN 'COMPLETED'
+      WHEN j."DeliveryDate" >= CURRENT_DATE THEN 'ON_TRACK'
+      WHEN j."DeliveryDate" < CURRENT_DATE AND j."IsFullfiled" = false 
+        AND EXTRACT(DAYS FROM (CURRENT_DATE - j."DeliveryDate")) <= 7 THEN 'RECENTLY_OVERDUE'
+      WHEN j."DeliveryDate" < CURRENT_DATE AND j."IsFullfiled" = false 
+        AND EXTRACT(DAYS FROM (CURRENT_DATE - j."DeliveryDate")) <= 30 THEN 'OVERDUE'
+      WHEN j."DeliveryDate" < CURRENT_DATE AND j."IsFullfiled" = false 
+        AND EXTRACT(DAYS FROM (CURRENT_DATE - j."DeliveryDate")) > 30 THEN 'CRITICALLY_OVERDUE'
+      ELSE 'UNKNOWN'
+    END as OverdueStatus,
+    
+    -- Risk Assessment
+    CASE 
+      WHEN j."IsFullfiled" = true THEN 'NO_RISK'
+      WHEN j."DeliveryDate" >= CURRENT_DATE THEN 'LOW_RISK'
+      WHEN j."DeliveryDate" < CURRENT_DATE AND j."IsFullfiled" = false 
+        AND EXTRACT(DAYS FROM (CURRENT_DATE - j."DeliveryDate")) <= 7 
+        AND j."Total" <= 50000 THEN 'MEDIUM_RISK'
+      WHEN j."DeliveryDate" < CURRENT_DATE AND j."IsFullfiled" = false 
+        AND EXTRACT(DAYS FROM (CURRENT_DATE - j."DeliveryDate")) <= 7 
+        AND j."Total" > 50000 THEN 'HIGH_RISK'
+      WHEN j."DeliveryDate" < CURRENT_DATE AND j."IsFullfiled" = false 
+        AND EXTRACT(DAYS FROM (CURRENT_DATE - j."DeliveryDate")) > 7 
+        AND j."Total" <= 100000 THEN 'HIGH_RISK'
+      WHEN j."DeliveryDate" < CURRENT_DATE AND j."IsFullfiled" = false 
+        AND EXTRACT(DAYS FROM (CURRENT_DATE - j."DeliveryDate")) > 7 
+        AND j."Total" > 100000 THEN 'CRITICAL_RISK'
+      ELSE 'UNKNOWN_RISK'
+    END as RiskLevel,
+    
+    -- Financial Impact Assessment
+    CASE 
+      WHEN j."DeliveryDate" < CURRENT_DATE AND j."IsFullfiled" = false 
+      THEN ROUND((j."Total" * EXTRACT(DAYS FROM (CURRENT_DATE - j."DeliveryDate")) * 0.001), 2)
+      ELSE 0
+    END as EstimatedDelayPenalty,
+    
+    -- Priority Classification
+    CASE 
+      WHEN j."Total" > 200000 AND EXTRACT(DAYS FROM (CURRENT_DATE - j."DeliveryDate")) > 0 THEN 'URGENT'
+      WHEN j."Total" > 100000 AND EXTRACT(DAYS FROM (CURRENT_DATE - j."DeliveryDate")) > 7 THEN 'HIGH'
+      WHEN j."Total" > 50000 AND EXTRACT(DAYS FROM (CURRENT_DATE - j."DeliveryDate")) > 14 THEN 'MEDIUM'
+      WHEN EXTRACT(DAYS FROM (CURRENT_DATE - j."DeliveryDate")) > 30 THEN 'LOW'
+      ELSE 'NORMAL'
+    END as EscalationPriority,
+    
+    -- Line Items Summary
+    COUNT(DISTINCT jli."JobworkLineItemId") as TotalLineItems,
+    SUM(jli."Quantity") as TotalQuantity,
+    
+    -- Material Flow Status
+    COUNT(DISTINCT dc."DeliveryChallanId") as DeliveryChallansCount,
+    COUNT(DISTINCT g."GRNId") as GRNsCount,
+    COUNT(DISTINCT CASE WHEN g."QcStatus" = 'QC_COMPLETE' THEN g."GRNId" END) as CompletedGRNs,
+    COUNT(DISTINCT CASE WHEN g."QcStatus" = 'QC_PENDING' THEN g."GRNId" END) as PendingGRNs,
+    
+    -- Material Flow Progress
+    CASE 
+      WHEN COUNT(DISTINCT dc."DeliveryChallanId") = 0 THEN 'NOT_DISPATCHED'
+      WHEN COUNT(DISTINCT g."GRNId") = 0 THEN 'DISPATCHED_NOT_RECEIVED'
+      WHEN COUNT(DISTINCT CASE WHEN g."QcStatus" = 'QC_PENDING' THEN g."GRNId" END) > 0 THEN 'RECEIVED_QC_PENDING'
+      WHEN COUNT(DISTINCT CASE WHEN g."QcStatus" = 'QC_COMPLETE' THEN g."GRNId" END) > 0 THEN 'QC_COMPLETED'
+      ELSE 'UNKNOWN_FLOW_STATUS'
+    END as MaterialFlowStatus,
+    
+    -- Recent Activity
+    MAX(dc."DateCreated") as LastDeliveryDate,
+    MAX(g."DateCreated") as LastGRNDate,
+    
+    -- Days Since Last Activity
+    CASE 
+      WHEN MAX(g."DateCreated") IS NOT NULL 
+      THEN EXTRACT(DAYS FROM (CURRENT_DATE - MAX(g."DateCreated")))
+      WHEN MAX(dc."DateCreated") IS NOT NULL 
+      THEN EXTRACT(DAYS FROM (CURRENT_DATE - MAX(dc."DateCreated")))
+      ELSE EXTRACT(DAYS FROM (CURRENT_DATE - j."CreationDate"))
+    END as DaysSinceLastActivity,
+    
+    -- Supplier Performance Context
+    supplier_stats.TotalJobworks as SupplierTotalJobworks,
+    supplier_stats.OverdueJobworks as SupplierOverdueJobworks,
+    supplier_stats.AvgDelayDays as SupplierAvgDelayDays,
+    
+    -- Created Information
+    created_user."FirstName" as CreatedByFirstName,
+    created_user."LastName" as CreatedByLastName,
+    j."createdAt" as JobworkCreatedAt
+    
+  FROM "Jobworks" j
+  INNER JOIN "Suppliers" s ON j."SupplierId" = s."SupplierId"
+  LEFT JOIN "Departments" d ON j."DepartmentId" = d."DepartmentId"
+  LEFT JOIN "JobworkTypes" jt ON j."JobworkTypeId" = jt."JobworkTypeId"
+  LEFT JOIN "Users" vendor_poc ON j."VendorPocId" = vendor_poc."id"
+  LEFT JOIN "Users" created_user ON j."CreatedBy" = created_user."id"
+  LEFT JOIN "JobworkLineItems" jli ON j."JobworkId" = jli."JobworkId"
+  LEFT JOIN "DeliveryChallans" dc ON j."SupplierId" = dc."SupplierId" 
+    AND dc."CustomerType" = 'Supplier' 
+    AND dc."IsActive" = true
+  LEFT JOIN "GRNs" g ON j."SupplierId" = g."SupplierId" 
+    AND g."CustomerType" = 'Supplier' 
+    AND g."IsActive" = true
+  
+  -- Supplier Performance Subquery
+  LEFT JOIN (
+    SELECT 
+      s_inner."SupplierId",
+      COUNT(j_inner."JobworkId") as TotalJobworks,
+      COUNT(CASE WHEN j_inner."DeliveryDate" < CURRENT_DATE AND j_inner."IsFullfiled" = false THEN 1 END) as OverdueJobworks,
+      ROUND(AVG(
+        CASE 
+          WHEN j_inner."DeliveryDate" < CURRENT_DATE AND j_inner."IsFullfiled" = false 
+          THEN EXTRACT(DAYS FROM (CURRENT_DATE - j_inner."DeliveryDate"))
+          ELSE 0
+        END
+      ), 2) as AvgDelayDays
+    FROM "Suppliers" s_inner
+    LEFT JOIN "Jobworks" j_inner ON s_inner."SupplierId" = j_inner."SupplierId" AND j_inner."IsActive" = true
+    WHERE s_inner."IsActive" = true
+    GROUP BY s_inner."SupplierId"
+  ) supplier_stats ON s."SupplierId" = supplier_stats."SupplierId"
+  
+  WHERE j."IsActive" = true 
+    AND s."IsActive" = true
+    {jobwork_filter}
+    {supplier_filter}
+    {overdue_filter}
+    {risk_filter}
+    {department_filter}
+    {date_filter}
+    {value_filter}
+    {priority_filter}
+  
+  GROUP BY 
+    j."JobworkId", j."CreationDate", j."Status", j."DeliveryDate", j."DeliveryDateRemarks",
+    j."IsFullfiled", j."Total", j."Currency", j."createdAt",
+    s."SupplierId", s."CompanyName", s."SupplierCode", s."FirstName", s."LastName",
+    s."PrimaryPhone", s."CompanyEmail", s."City", s."State",
+    d."DepartmentId", d."Name",
+    jt."JobworkTypeId", jt."Name",
+    vendor_poc."FirstName", vendor_poc."LastName", vendor_poc."Email", vendor_poc."Phone",
+    created_user."FirstName", created_user."LastName",
+    supplier_stats.TotalJobworks, supplier_stats.OverdueJobworks, supplier_stats.AvgDelayDays
+  
+  ORDER BY DelayDays DESC, JobworkValue DESC, j."JobworkId" DESC
+
+inputs:
+  - name: jobwork_id
+    type: integer
+    required: false
+    description: "Specific jobwork ID to analyze"
+    sql_condition: "AND j.JobworkId = {jobwork_id}"
+    
+  - name: supplier_id
+    type: integer
+    required: false
+    description: "Filter by specific supplier"
+    sql_condition: "AND j.SupplierId = {supplier_id}"
+    
+  - name: only_overdue
+    type: boolean
+    required: false
+    description: "Show only overdue jobworks"
+    sql_condition: "AND j.DeliveryDate < CURRENT_DATE AND j.IsFullfiled = false"
+    
+  - name: risk_level
+    type: string
+    required: false
+    description: "Filter by risk level (LOW_RISK, MEDIUM_RISK, HIGH_RISK, CRITICAL_RISK)"
+    sql_condition: |
+      AND CASE 
+        WHEN j.IsFullfiled = true THEN 'NO_RISK'
+        WHEN j.DeliveryDate >= CURRENT_DATE THEN 'LOW_RISK'
+        WHEN j.DeliveryDate < CURRENT_DATE AND j.IsFullfiled = false 
+          AND EXTRACT(DAYS FROM (CURRENT_DATE - j.DeliveryDate)) <= 7 
+          AND j.Total <= 50000 THEN 'MEDIUM_RISK'
+        WHEN j.DeliveryDate < CURRENT_DATE AND j.IsFullfiled = false 
+          AND EXTRACT(DAYS FROM (CURRENT_DATE - j.DeliveryDate)) <= 7 
+          AND j.Total > 50000 THEN 'HIGH_RISK'
+        WHEN j.DeliveryDate < CURRENT_DATE AND j.IsFullfiled = false 
+          AND EXTRACT(DAYS FROM (CURRENT_DATE - j.DeliveryDate)) > 7 
+          AND j.Total <= 100000 THEN 'HIGH_RISK'
+        WHEN j.DeliveryDate < CURRENT_DATE AND j.IsFullfiled = false 
+          AND EXTRACT(DAYS FROM (CURRENT_DATE - j.DeliveryDate)) > 7 
+          AND j.Total > 100000 THEN 'CRITICAL_RISK'
+        ELSE 'UNKNOWN_RISK'
+      END = '{risk_level}'
+    
+  - name: min_delay_days
+    type: integer
+    required: false
+    description: "Minimum delay days threshold"
+    sql_condition: |
+      AND CASE 
+        WHEN j.DeliveryDate < CURRENT_DATE AND j.IsFullfiled = false 
+        THEN EXTRACT(DAYS FROM (CURRENT_DATE - j.DeliveryDate))
+        ELSE 0
+      END >= {min_delay_days}
+    
+  - name: department_id
+    type: integer
+    required: false
+    description: "Filter by department"
+    sql_condition: "AND j.DepartmentId = {department_id}"
+    
+  - name: start_date
+    type: date
+    required: false
+    description: "Filter jobworks created from this date"
+    sql_condition: "AND j.CreationDate >= '{start_date}'"
+    
+  - name: end_date
+    type: date
+    required: false
+    description: "Filter jobworks created up to this date"
+    sql_condition: "AND j.CreationDate <= '{end_date}'"
+    
+  - name: min_value
+    type: number
+    required: false
+    description: "Minimum jobwork value threshold"
+    sql_condition: "AND j.Total >= {min_value}"
+    
+  - name: escalation_priority
+    type: string
+    required: false
+    description: "Filter by escalation priority (URGENT, HIGH, MEDIUM, LOW, NORMAL)"
+    sql_condition: |
+      AND CASE 
+        WHEN j.Total > 200000 AND EXTRACT(DAYS FROM (CURRENT_DATE - j.DeliveryDate)) > 0 THEN 'URGENT'
+        WHEN j.Total > 100000 AND EXTRACT(DAYS FROM (CURRENT_DATE - j.DeliveryDate)) > 7 THEN 'HIGH'
+        WHEN j.Total > 50000 AND EXTRACT(DAYS FROM (CURRENT_DATE - j.DeliveryDate)) > 14 THEN 'MEDIUM'
+        WHEN EXTRACT(DAYS FROM (CURRENT_DATE - j.DeliveryDate)) > 30 THEN 'LOW'
+        ELSE 'NORMAL'
+      END = '{escalation_priority}'
+
+aggregation_queries:
+  overdue_summary: |
+    SELECT 
+      CASE 
+        WHEN j.IsFullfiled = true THEN 'COMPLETED'
+        WHEN j.DeliveryDate >= CURRENT_DATE THEN 'ON_TRACK'
+        WHEN j.DeliveryDate < CURRENT_DATE AND j.IsFullfiled = false 
+          AND EXTRACT(DAYS FROM (CURRENT_DATE - j.DeliveryDate)) <= 7 THEN 'RECENTLY_OVERDUE'
+        WHEN j.DeliveryDate < CURRENT_DATE AND j.IsFullfiled = false 
+          AND EXTRACT(DAYS FROM (CURRENT_DATE - j.DeliveryDate)) <= 30 THEN 'OVERDUE'
+        WHEN j.DeliveryDate < CURRENT_DATE AND j.IsFullfiled = false 
+          AND EXTRACT(DAYS FROM (CURRENT_DATE - j.DeliveryDate)) > 30 THEN 'CRITICALLY_OVERDUE'
+        ELSE 'UNKNOWN'
+      END as OverdueStatus,
+      COUNT(*) as JobworkCount,
+      SUM(j.Total) as TotalValue,
+      ROUND(AVG(
+        CASE 
+          WHEN j.DeliveryDate < CURRENT_DATE AND j.IsFullfiled = false 
+          THEN EXTRACT(DAYS FROM (CURRENT_DATE - j.DeliveryDate))
+          ELSE 0
+        END
+      ), 2) as AvgDelayDays,
+      SUM(CASE 
+        WHEN j.DeliveryDate < CURRENT_DATE AND j.IsFullfiled = false 
+        THEN ROUND((j.Total * EXTRACT(DAYS FROM (CURRENT_DATE - j.DeliveryDate)) * 0.001), 2)
+        ELSE 0
+      END) as TotalEstimatedPenalty
+    FROM Jobworks j
+    WHERE j.IsActive = true
+    GROUP BY OverdueStatus
+    ORDER BY JobworkCount DESC
+
+  supplier_overdue_analysis: |
+    SELECT 
+      s.SupplierId,
+      s.CompanyName,
+      s.SupplierCode,
+      COUNT(j.JobworkId) as TotalJobworks,
+      COUNT(CASE WHEN j.DeliveryDate < CURRENT_DATE AND j.IsFullfiled = false THEN 1 END) as OverdueJobworks,
+      ROUND(
+        CASE 
+          WHEN COUNT(j.JobworkId) > 0 
+          THEN (COUNT(CASE WHEN j.DeliveryDate < CURRENT_DATE AND j.IsFullfiled = false THEN 1 END) * 100.0 / COUNT(j.JobworkId))
+          ELSE 0 
+        END, 2
+      ) as OverduePercentage,
+      ROUND(AVG(
+        CASE 
+          WHEN j.DeliveryDate < CURRENT_DATE AND j.IsFullfiled = false 
+          THEN EXTRACT(DAYS FROM (CURRENT_DATE - j.DeliveryDate))
+          ELSE 0
+        END
+      ), 2) as AvgDelayDays,
+      SUM(CASE WHEN j.DeliveryDate < CURRENT_DATE AND j.IsFullfiled = false THEN j.Total ELSE 0 END) as OverdueValue
+    FROM Suppliers s
+    LEFT JOIN Jobworks j ON s.SupplierId = j.SupplierId AND j.IsActive = true
+    WHERE s.IsActive = true
+    GROUP BY s.SupplierId, s.CompanyName, s.SupplierCode
+    HAVING COUNT(j.JobworkId) > 0
+    ORDER BY OverduePercentage DESC, OverdueValue DESC
+
+  risk_distribution: |
+    SELECT 
+      CASE 
+        WHEN j.IsFullfiled = true THEN 'NO_RISK'
+        WHEN j.DeliveryDate >= CURRENT_DATE THEN 'LOW_RISK'
+        WHEN j.DeliveryDate < CURRENT_DATE AND j.IsFullfiled = false 
+          AND EXTRACT(DAYS FROM (CURRENT_DATE - j.DeliveryDate)) <= 7 
+          AND j.Total <= 50000 THEN 'MEDIUM_RISK'
+        WHEN j.DeliveryDate < CURRENT_DATE AND j.IsFullfiled = false 
+          AND EXTRACT(DAYS FROM (CURRENT_DATE - j.DeliveryDate)) <= 7 
+          AND j.Total > 50000 THEN 'HIGH_RISK'
+        WHEN j.DeliveryDate < CURRENT_DATE AND j.IsFullfiled = false 
+          AND EXTRACT(DAYS FROM (CURRENT_DATE - j.DeliveryDate)) > 7 
+          AND j.Total <= 100000 THEN 'HIGH_RISK'
+        WHEN j.DeliveryDate < CURRENT_DATE AND j.IsFullfiled = false 
+          AND EXTRACT(DAYS FROM (CURRENT_DATE - j.DeliveryDate)) > 7 
+          AND j.Total > 100000 THEN 'CRITICAL_RISK'
+        ELSE 'UNKNOWN_RISK'
+      END as RiskLevel,
+      COUNT(*) as JobworkCount,
+      SUM(j.Total) as TotalValue,
+      ROUND(AVG(j.Total), 2) as AvgValue
+    FROM Jobworks j
+    WHERE j.IsActive = true
+    GROUP BY RiskLevel
+    ORDER BY 
+      CASE RiskLevel
+        WHEN 'CRITICAL_RISK' THEN 1
+        WHEN 'HIGH_RISK' THEN 2
+        WHEN 'MEDIUM_RISK' THEN 3
+        WHEN 'LOW_RISK' THEN 4
+        WHEN 'NO_RISK' THEN 5
+        ELSE 6
+      END
+
+output_format: table
+
+tags:
+  - overdue_analysis
+  - delay_tracking
+  - risk_assessment
+  - escalation_management
+  - supplier_accountability
+  - financial_impact
+  - delivery_monitoring
+
+examples:
+  - "Show all overdue jobworks"
+  - "Which jobworks are critically overdue?"
+  - "Show high-risk delayed deliveries"
+  - "Overdue analysis for Kumar Textiles"
+  - "Show jobworks delayed by more than 30 days"
+  - "Which suppliers have the most overdue jobworks?"
+  - "Show urgent escalation items"
+  - "Overdue jobworks with high financial impact"
+  - "Risk assessment for all pending deliveries"
+  - "Show recently overdue jobworks this week"

@@ -1,0 +1,292 @@
+# Intent mappings for Jobwork module
+# Maps natural language phrases to specific business intents
+
+intent_mappings:
+  jobwork-summary:
+    primary_triggers:
+      - "jobwork summary"
+      - "jobwork overview"
+      - "show jobwork details"
+      - "jobwork information"
+      - "list all jobworks"
+      - "jobwork report"
+      - "jobwork dashboard"
+      - "complete jobwork data"
+    
+    contextual_phrases:
+      - "show me jobwork {jobwork_id}"
+      - "get details for jobwork {jobwork_id}"
+      - "jobwork summary for {supplier_name}"
+      - "all jobworks for {department}"
+      - "jobwork status report"
+      - "jobwork financial summary"
+      - "comprehensive jobwork view"
+      - "jobwork master data"
+    
+    question_patterns:
+      - "what is the status of jobwork {jobwork_id}?"
+      - "how many jobworks are active?"
+      - "which jobworks are pending approval?"
+      - "what are the total jobwork values?"
+      - "show me recent jobworks"
+
+  material-flow-tracking:
+    primary_triggers:
+      - "material flow"
+      - "track materials"
+      - "material tracking"
+      - "flow tracking"
+      - "material movement"
+      - "inventory flow"
+      - "material reconciliation"
+      - "material lifecycle"
+    
+    contextual_phrases:
+      - "track material for jobwork {jobwork_id}"
+      - "material flow from {supplier_name}"
+      - "show delivery and receipt status"
+      - "material reconciliation report"
+      - "input output tracking"
+      - "material consumption analysis"
+      - "delivery vs receipt comparison"
+      - "material wastage tracking"
+    
+    question_patterns:
+      - "where is the material for jobwork {jobwork_id}?"
+      - "how much material was delivered vs received?"
+      - "what is the material status?"
+      - "show me material discrepancies"
+      - "track fabric delivery for {jobwork_id}"
+
+  vendor-performance:
+    primary_triggers:
+      - "vendor performance"
+      - "supplier performance"
+      - "vendor analysis"
+      - "supplier evaluation"
+      - "vendor scorecard"
+      - "supplier metrics"
+      - "vendor rating"
+      - "supplier assessment"
+    
+    contextual_phrases:
+      - "performance of {supplier_name}"
+      - "vendor performance metrics"
+      - "supplier delivery performance"
+      - "vendor quality metrics"
+      - "supplier reliability analysis"
+      - "vendor comparison report"
+      - "top performing suppliers"
+      - "underperforming vendors"
+    
+    question_patterns:
+      - "how is {supplier_name} performing?"
+      - "which suppliers are most reliable?"
+      - "what is the on-time delivery rate?"
+      - "show me vendor rankings"
+      - "compare supplier performance"
+
+  qc-monitoring:
+    primary_triggers:
+      - "quality control"
+      - "qc monitoring"
+      - "quality metrics"
+      - "rejection analysis"
+      - "quality tracking"
+      - "qc report"
+      - "quality assurance"
+      - "compliance monitoring"
+    
+    contextual_phrases:
+      - "quality status for jobwork {jobwork_id}"
+      - "rejection rate analysis"
+      - "quality control metrics"
+      - "grn quality status"
+      - "quality compliance report"
+      - "qc parameter tracking"
+      - "quality trend analysis"
+      - "acceptance rate monitoring"
+    
+    question_patterns:
+      - "what is the rejection rate?"
+      - "show me quality issues"
+      - "which items failed qc?"
+      - "what are the main rejection reasons?"
+      - "how is our quality performance?"
+
+  overdue-analysis:
+    primary_triggers:
+      - "overdue analysis"
+      - "delayed deliveries"
+      - "overdue jobworks"
+      - "delivery delays"
+      - "timeline analysis"
+      - "delay tracking"
+      - "overdue report"
+      - "late deliveries"
+    
+    contextual_phrases:
+      - "overdue jobworks for {supplier_name}"
+      - "critical overdue items"
+      - "delivery delay analysis"
+      - "overdue value calculation"
+      - "risk assessment report"
+      - "timeline deviation analysis"
+      - "bottleneck identification"
+      - "delay impact analysis"
+    
+    question_patterns:
+      - "which jobworks are overdue?"
+      - "what is the total overdue value?"
+      - "show me critical delays"
+      - "which suppliers are causing delays?"
+      - "what are the main delay reasons?"
+
+# Semantic groupings for better intent recognition
+semantic_groups:
+  reporting_keywords:
+    - "report"
+    - "summary"
+    - "overview"
+    - "dashboard"
+    - "analysis"
+    - "metrics"
+    - "status"
+    - "details"
+  
+  action_keywords:
+    - "show"
+    - "display"
+    - "list"
+    - "get"
+    - "find"
+    - "track"
+    - "monitor"
+    - "analyze"
+  
+  filter_keywords:
+    - "for"
+    - "by"
+    - "with"
+    - "from"
+    - "where"
+    - "having"
+    - "between"
+    - "during"
+  
+  time_keywords:
+    - "today"
+    - "yesterday"
+    - "this week"
+    - "last week"
+    - "this month"
+    - "last month"
+    - "this year"
+    - "recent"
+  
+  status_keywords:
+    - "active"
+    - "pending"
+    - "completed"
+    - "approved"
+    - "rejected"
+    - "overdue"
+    - "delayed"
+    - "on-time"
+
+# Entity extraction patterns
+entity_patterns:
+  jobwork_id:
+    patterns:
+      - "jobwork {number}"
+      - "JW{number}"
+      - "job work {number}"
+      - "jobwork id {number}"
+    
+  supplier_name:
+    patterns:
+      - "supplier {name}"
+      - "vendor {name}"
+      - "{name} supplier"
+      - "{name} vendor"
+    
+  department:
+    patterns:
+      - "{department} department"
+      - "department {department}"
+      - "dept {department}"
+    
+  date_range:
+    patterns:
+      - "from {start_date} to {end_date}"
+      - "between {start_date} and {end_date}"
+      - "since {start_date}"
+      - "until {end_date}"
+    
+  status:
+    patterns:
+      - "status {status}"
+      - "{status} status"
+      - "with status {status}"
+
+# Ambiguity resolution rules
+disambiguation_rules:
+  - condition: "contains 'material' AND contains 'track'"
+    intent: "material-flow-tracking"
+    confidence: 0.9
+    
+  - condition: "contains 'quality' OR contains 'qc' OR contains 'rejection'"
+    intent: "qc-monitoring"
+    confidence: 0.85
+    
+  - condition: "contains 'overdue' OR contains 'delay' OR contains 'late'"
+    intent: "overdue-analysis"
+    confidence: 0.9
+    
+  - condition: "contains 'performance' AND (contains 'vendor' OR contains 'supplier')"
+    intent: "vendor-performance"
+    confidence: 0.85
+    
+  - condition: "contains 'summary' OR contains 'overview' OR contains 'report'"
+    intent: "jobwork-summary"
+    confidence: 0.7
+
+# Context-aware mappings
+contextual_mappings:
+  follow_up_intents:
+    after_jobwork_summary:
+      - "material-flow-tracking"
+      - "qc-monitoring"
+      - "overdue-analysis"
+    
+    after_vendor_performance:
+      - "qc-monitoring"
+      - "overdue-analysis"
+      - "material-flow-tracking"
+    
+    after_overdue_analysis:
+      - "vendor-performance"
+      - "material-flow-tracking"
+  
+  related_queries:
+    jobwork_summary:
+      - "Show me the material flow for this jobwork"
+      - "What is the quality status?"
+      - "Is this jobwork overdue?"
+    
+    vendor_performance:
+      - "Show me their recent jobworks"
+      - "What is their quality performance?"
+      - "Are they causing any delays?"
+
+# Confidence scoring weights
+confidence_weights:
+  exact_match: 1.0
+  partial_match: 0.8
+  semantic_match: 0.6
+  contextual_match: 0.4
+  fallback_match: 0.2
+
+# Default fallback intent
+fallback_intent: "jobwork-summary"
+fallback_message: "I'll show you a general jobwork summary. Please specify if you need material tracking, quality monitoring, vendor performance, or overdue analysis."

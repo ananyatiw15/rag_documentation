@@ -1,0 +1,295 @@
+# Technical terms and field definitions for Jobwork module
+# Explains database fields, enums, and technical concepts
+
+database_fields:
+  jobworks_table:
+    JobworkId:
+      type: "INTEGER (Primary Key)"
+      description: "Unique identifier for each jobwork record"
+      auto_increment: true
+      business_usage: "Used for referencing jobworks across the system"
+      
+    JobworkTypeId:
+      type: "INTEGER (Foreign Key)"
+      description: "References JobworkTypes table to categorize the type of work"
+      business_usage: "Determines workflow and processing rules"
+      examples: ["1 = Cutting", "2 = Stitching", "3 = Finishing"]
+      
+    CreationDate:
+      type: "DATEONLY"
+      description: "Date when the jobwork was created"
+      format: "YYYY-MM-DD"
+      business_usage: "Used for reporting and timeline analysis"
+      
+    Currency:
+      type: "STRING(20)"
+      description: "Currency code for financial calculations"
+      examples: ["INR", "USD", "EUR"]
+      default: "INR"
+      
+    PaymentTermId:
+      type: "INTEGER (Foreign Key)"
+      description: "References payment terms for the jobwork"
+      business_usage: "Defines payment conditions and schedules"
+      
+    POCs:
+      type: "ARRAY(INTEGER)"
+      description: "Array of Point of Contact user IDs"
+      business_usage: "Multiple users responsible for jobwork coordination"
+      
+    SupplierId:
+      type: "INTEGER (Foreign Key)"
+      description: "References Suppliers table for the assigned vendor"
+      business_usage: "Links jobwork to executing supplier"
+      constraints: "Must be active supplier"
+      
+    Status:
+      type: "ENUM"
+      description: "Current status of the jobwork"
+      values: ["DRAFT", "APPROVED", "IN_PROGRESS", "COMPLETED", "CANCELLED"]
+      default: "DRAFT"
+      business_usage: "Workflow state management"
+      
+    DeliveryDate:
+      type: "DATEONLY"
+      description: "Expected delivery date for the jobwork"
+      business_usage: "Used for scheduling and overdue analysis"
+      
+    IsActive:
+      type: "BOOLEAN"
+      description: "Soft delete flag"
+      default: true
+      business_usage: "Maintains data integrity while hiding deleted records"
+      
+    IsFullfiled:
+      type: "BOOLEAN"
+      description: "Indicates if jobwork is completely fulfilled"
+      default: false
+      business_usage: "Completion tracking and reporting"
+
+  jobwork_line_items_table:
+    JobworkLineItemId:
+      type: "INTEGER (Primary Key)"
+      description: "Unique identifier for each line item"
+      auto_increment: true
+      
+    LineItemType:
+      type: "ENUM"
+      description: "Type of line item in the jobwork"
+      values: ["FABRIC", "ACCESSORY", "SERVICE", "OTHER"]
+      business_usage: "Categorizes items for processing and reporting"
+      
+    ItemId:
+      type: "INTEGER"
+      description: "References the actual item (Style, RM, etc.)"
+      business_usage: "Polymorphic reference based on ItemType"
+      
+    ItemType:
+      type: "ENUM"
+      description: "Specifies the type of item being referenced"
+      values: ["STYLE", "FABRIC", "ACCESSORY", "OTHER"]
+      business_usage: "Determines which table ItemId references"
+      
+    Rate:
+      type: "DOUBLE"
+      description: "Unit rate for the line item"
+      business_usage: "Cost calculation and pricing"
+      
+    OutputRate:
+      type: "DOUBLE"
+      description: "Expected output rate after processing"
+      business_usage: "Efficiency and yield calculations"
+      
+    OutputRateSystem:
+      type: "DOUBLE"
+      description: "System calculated output rate"
+      business_usage: "Automated rate calculations"
+      
+    Quantity:
+      type: "DOUBLE"
+      description: "Quantity of the item"
+      business_usage: "Volume tracking and calculations"
+      
+    WastePercent:
+      type: "DOUBLE"
+      description: "Expected waste percentage"
+      business_usage: "Waste planning and cost calculations"
+      
+    ActualWaste:
+      type: "DOUBLE"
+      description: "Actual waste recorded after processing"
+      business_usage: "Performance analysis and future planning"
+
+enum_values:
+  jobwork_status:
+    DRAFT:
+      description: "Initial state, not yet approved"
+      next_states: ["APPROVED", "CANCELLED"]
+      permissions: "Can be edited by creator"
+      
+    APPROVED:
+      description: "Approved and ready for execution"
+      next_states: ["IN_PROGRESS", "CANCELLED"]
+      permissions: "Limited editing, requires approval for changes"
+      
+    IN_PROGRESS:
+      description: "Currently being executed by supplier"
+      next_states: ["COMPLETED", "CANCELLED"]
+      permissions: "Status updates only"
+      
+    COMPLETED:
+      description: "Jobwork completed and delivered"
+      next_states: []
+      permissions: "Read-only, audit trail only"
+      
+    CANCELLED:
+      description: "Jobwork cancelled"
+      next_states: []
+      permissions: "Read-only"
+
+  line_item_type:
+    FABRIC:
+      description: "Fabric materials for production"
+      item_reference: "RMVariations table"
+      processing_rules: "Requires quality check, waste tracking"
+      
+    ACCESSORY:
+      description: "Accessories like buttons, zippers, etc."
+      item_reference: "RMs table"
+      processing_rules: "Count-based tracking"
+      
+    SERVICE:
+      description: "Service-based line items"
+      item_reference: "Service catalog"
+      processing_rules: "Time or unit-based billing"
+
+technical_concepts:
+  polymorphic_relationships:
+    description: "ItemId field references different tables based on ItemType"
+    implementation: "Sequelize associations with conditions"
+    tables_involved:
+      - "Styles (when ItemType = 'STYLE')"
+      - "RMVariations (when ItemType = 'FABRIC')"
+      - "RMs (when ItemType = 'ACCESSORY')"
+    
+  soft_delete:
+    description: "Records are marked as inactive instead of physical deletion"
+    implementation: "IsActive = false"
+    benefits: "Data integrity, audit trail, recovery capability"
+    query_impact: "All queries must include IsActive = true filter"
+    
+  audit_trail:
+    description: "Change tracking through log tables"
+    implementation: "Sequelize hooks create log entries"
+    tables: ["JobworkLogs", "JobworkLineItemLogs"]
+    captured_data: "All field changes with timestamps and user info"
+    
+  array_fields:
+    description: "PostgreSQL array fields for multiple values"
+    examples: ["POCs array", "Files array"]
+    query_considerations: "Use array operators for filtering"
+    indexing: "GIN indexes for array fields"
+
+data_types:
+  DATEONLY:
+    description: "Date without time component"
+    format: "YYYY-MM-DD"
+    storage: "PostgreSQL DATE type"
+    usage: "Delivery dates, creation dates"
+    
+  DOUBLE:
+    description: "Double precision floating point"
+    precision: "15-17 decimal digits"
+    usage: "Financial amounts, quantities, percentages"
+    considerations: "Rounding for display"
+    
+  ENUM:
+    description: "Predefined set of values"
+    storage: "PostgreSQL ENUM type"
+    benefits: "Data integrity, performance"
+    limitations: "Schema changes require migration"
+    
+  JSONB:
+    description: "Binary JSON storage"
+    usage: "Files array, flexible metadata"
+    benefits: "Indexable, queryable JSON"
+    query_syntax: "PostgreSQL JSON operators"
+
+indexing_strategy:
+  primary_indexes:
+    - "JobworkId (Primary Key)"
+    - "JobworkLineItemId (Primary Key)"
+    
+  foreign_key_indexes:
+    - "SupplierId"
+    - "DepartmentId"
+    - "JobworkTypeId"
+    - "JobworkId (in line items)"
+    
+  business_indexes:
+    - "Status, IsActive (composite)"
+    - "DeliveryDate, IsActive (composite)"
+    - "CreationDate DESC"
+    - "SupplierId, Status (composite)"
+    
+  array_indexes:
+    - "POCs (GIN index)"
+    - "Files (GIN index)"
+
+query_patterns:
+  active_records:
+    pattern: "WHERE IsActive = true"
+    description: "Standard filter for non-deleted records"
+    usage: "All business queries"
+    
+  status_filtering:
+    pattern: "WHERE Status IN ('APPROVED', 'IN_PROGRESS')"
+    description: "Filter by workflow status"
+    usage: "Operational reports"
+    
+  date_range_queries:
+    pattern: "WHERE CreationDate BETWEEN ? AND ?"
+    description: "Time-based filtering"
+    usage: "Reporting and analytics"
+    
+  supplier_performance:
+    pattern: "GROUP BY SupplierId HAVING COUNT(*) > 0"
+    description: "Aggregate by supplier"
+    usage: "Performance analysis"
+
+performance_considerations:
+  large_datasets:
+    description: "Optimize queries for high-volume data"
+    strategies:
+      - "Use appropriate indexes"
+      - "Limit result sets with pagination"
+      - "Use covering indexes where possible"
+      - "Consider partitioning for historical data"
+      
+  join_optimization:
+    description: "Efficient multi-table queries"
+    strategies:
+      - "Use INNER JOINs where possible"
+      - "Filter early in WHERE clause"
+      - "Use EXISTS instead of IN for subqueries"
+      - "Consider materialized views for complex aggregations"
+      
+  array_field_queries:
+    description: "Optimize array field operations"
+    strategies:
+      - "Use GIN indexes"
+      - "Use array operators (@>, &&, etc.)"
+      - "Consider unnesting for complex operations"
+
+security_considerations:
+  data_access:
+    description: "Row-level security based on user permissions"
+    implementation: "Filter by user department or supplier access"
+    
+  audit_requirements:
+    description: "All changes must be logged"
+    implementation: "Sequelize hooks for automatic logging"
+    
+  sensitive_data:
+    description: "Financial and supplier information protection"
+    implementation: "Role-based access control"

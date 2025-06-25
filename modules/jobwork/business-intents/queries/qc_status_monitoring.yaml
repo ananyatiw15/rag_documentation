@@ -1,0 +1,325 @@
+intent: qc_status_monitoring
+description: >
+  Quality control monitoring and analysis for jobwork materials including GRN quality status, 
+  rejection analysis, acceptance rates, and quality trends. This provides comprehensive QC 
+  oversight for maintaining quality standards and supplier accountability.
+
+trigger_type: SQL
+
+sql_template: |
+  SELECT 
+    -- GRN Information
+    g."GRNId",
+    g."DateCreated" as GRNDate,
+    g."Status" as GRNStatus,
+    g."QcStatus" as GRNQcStatus,
+    g."ReturnStatus" as GRNReturnStatus,
+    g."Total" as GRNTotal,
+    g."ChallanNumber",
+    g."InvoiceNumber",
+    
+    -- Supplier Information
+    s."SupplierId",
+    s."CompanyName" as SupplierName,
+    s."SupplierCode",
+    s."PrimaryPhone" as SupplierPhone,
+    s."CompanyEmail" as SupplierEmail,
+    
+    -- Jobwork Context
+    j."JobworkId",
+    j."Status" as JobworkStatus,
+    j."DeliveryDate" as JobworkDeliveryDate,
+    
+    -- Department Information
+    d."DepartmentId",
+    d."Name" as DepartmentName,
+    
+    -- GRN Item Details (Quality Analysis)
+    gid."GRNItemDetailsId",
+    gid."SKUCode",
+    gid."ItemType",
+    gid."ItemId",
+    gid."OrderedQuantity",
+    gid."ReceivedQuantity",
+    gid."Rate" as ItemRate,
+    gid."Amount" as ItemAmount,
+    gid."QcStatus" as ItemQcStatus,
+    gid."ReturnStatus" as ItemReturnStatus,
+    gid."ReturnedQuantity",
+    
+    -- Quality Calculations
+    CASE 
+      WHEN gid."OrderedQuantity" > 0 
+      THEN ROUND((gid."ReceivedQuantity" / gid."OrderedQuantity" * 100), 2)
+      ELSE 0
+    END as ReceiptPercentage,
+    
+    CASE 
+      WHEN gid."ReceivedQuantity" > 0 AND gid."ReturnedQuantity" IS NOT NULL
+      THEN ROUND((gid."ReturnedQuantity" / gid."ReceivedQuantity" * 100), 2)
+      ELSE 0
+    END as RejectionPercentage,
+    
+    CASE 
+      WHEN gid."ReceivedQuantity" > 0 
+      THEN ROUND(((gid."ReceivedQuantity" - COALESCE(gid."ReturnedQuantity", 0)) / gid."ReceivedQuantity" * 100), 2)
+      ELSE 0
+    END as AcceptancePercentage,
+    
+    -- Quality Status Classification
+    CASE 
+      WHEN gid."QcStatus" = 'QC_COMPLETE' AND (gid."ReturnedQuantity" IS NULL OR gid."ReturnedQuantity" = 0) THEN 'FULLY_ACCEPTED'
+      WHEN gid."QcStatus" = 'QC_COMPLETE' AND gid."ReturnedQuantity" > 0 AND gid."ReturnedQuantity" < gid."ReceivedQuantity" THEN 'PARTIALLY_ACCEPTED'
+      WHEN gid."QcStatus" IN ('REJECTED', 'PARTIALLY_REJECTED') THEN 'REJECTED'
+      WHEN gid."QcStatus" = 'SHORT_QTY' THEN 'SHORT_QUANTITY'
+      WHEN gid."QcStatus" = 'MARKED_FOR_QC' THEN 'QC_PENDING'
+      ELSE 'UNKNOWN_STATUS'
+    END as QualityClassification,
+    
+    -- Risk Assessment
+    CASE 
+      WHEN gid."QcStatus" IN ('REJECTED', 'PARTIALLY_REJECTED') AND gid."Amount" > 50000 THEN 'HIGH_RISK'
+      WHEN gid."QcStatus" IN ('REJECTED', 'PARTIALLY_REJECTED') AND gid."Amount" > 10000 THEN 'MEDIUM_RISK'
+      WHEN gid."QcStatus" IN ('REJECTED', 'PARTIALLY_REJECTED') THEN 'LOW_RISK'
+      WHEN gid."QcStatus" = 'MARKED_FOR_QC' AND g."DateCreated" < (CURRENT_DATE - INTERVAL '7 days') THEN 'OVERDUE_QC'
+      ELSE 'NO_RISK'
+    END as RiskLevel,
+    
+    -- Financial Impact
+    CASE 
+      WHEN gid."ReturnedQuantity" IS NOT NULL AND gid."Rate" IS NOT NULL
+      THEN ROUND((gid."ReturnedQuantity" * gid."Rate"), 2)
+      ELSE 0
+    END as RejectionValue,
+    
+    -- Delivery Challan Reference
+    dc."DeliveryChallanId",
+    dc."DateCreated" as DCDate,
+    dc."Status" as DCStatus,
+    
+    -- Quality Control Timeline
+    EXTRACT(DAYS FROM (CURRENT_DATE - g."DateCreated")) as DaysSinceGRN,
+    
+    -- Created/Modified Information
+    created_user."FirstName" as CreatedByFirstName,
+    created_user."LastName" as CreatedByLastName,
+    g."createdAt" as GRNCreatedAt
+    
+  FROM "GRNs" g
+  INNER JOIN "Suppliers" s ON g."SupplierId" = s."SupplierId"
+  LEFT JOIN "GRNItemDetails" gid ON g."GRNId" = gid."GRNId" AND gid."IsActive" = true
+  LEFT JOIN "Jobworks" j ON g."SupplierId" = j."SupplierId" AND j."IsActive" = true
+  LEFT JOIN "Departments" d ON j."DepartmentId" = d."DepartmentId"
+  LEFT JOIN "DeliveryChallans" dc ON g."DCId" = dc."DeliveryChallanId"
+  LEFT JOIN "Users" created_user ON g."CreatedBy" = created_user."id"
+  
+  WHERE g."IsActive" = true 
+    AND s."IsActive" = true
+    AND g."CustomerType" = 'Supplier'
+    {grn_filter}
+    {supplier_filter}
+    {qc_status_filter}
+    {date_filter}
+    {risk_filter}
+    {item_type_filter}
+    {department_filter}
+  
+  ORDER BY g."DateCreated" DESC, g."GRNId" DESC, gid."GRNItemDetailsId"
+
+inputs:
+  - name: grn_id
+    type: integer
+    required: false
+    description: "Specific GRN ID to analyze"
+    sql_condition: "AND g.GRNId = {grn_id}"
+    
+  - name: supplier_id
+    type: integer
+    required: false
+    description: "Filter by specific supplier"
+    sql_condition: "AND g.SupplierId = {supplier_id}"
+    
+  - name: qc_status
+    type: string
+    required: false
+    description: "Filter by QC status (QC_PENDING, PARTIALLY_REJECTED, REJECTED, SHORT_QTY, QC_COMPLETE)"
+    sql_condition: "AND g.QcStatus = '{qc_status}'"
+    
+  - name: item_qc_status
+    type: string
+    required: false
+    description: "Filter by item-level QC status"
+    sql_condition: "AND gid.QcStatus = '{item_qc_status}'"
+    
+  - name: start_date
+    type: date
+    required: false
+    description: "Filter GRNs from this date onwards"
+    sql_condition: "AND g.DateCreated >= '{start_date}'"
+    
+  - name: end_date
+    type: date
+    required: false
+    description: "Filter GRNs up to this date"
+    sql_condition: "AND g.DateCreated <= '{end_date}'"
+    
+  - name: risk_level
+    type: string
+    required: false
+    description: "Filter by risk level (HIGH_RISK, MEDIUM_RISK, LOW_RISK, OVERDUE_QC, NO_RISK)"
+    sql_condition: |
+      AND CASE 
+        WHEN gid.QcStatus IN ('REJECTED', 'PARTIALLY_REJECTED') AND gid.Amount > 50000 THEN 'HIGH_RISK'
+        WHEN gid.QcStatus IN ('REJECTED', 'PARTIALLY_REJECTED') AND gid.Amount > 10000 THEN 'MEDIUM_RISK'
+        WHEN gid.QcStatus IN ('REJECTED', 'PARTIALLY_REJECTED') THEN 'LOW_RISK'
+        WHEN gid.QcStatus = 'MARKED_FOR_QC' AND g.DateCreated < (CURRENT_DATE - INTERVAL '7 days') THEN 'OVERDUE_QC'
+        ELSE 'NO_RISK'
+      END = '{risk_level}'
+    
+  - name: item_type
+    type: string
+    required: false
+    description: "Filter by item type (Fabric, Style, Accessory, Other)"
+    sql_condition: "AND gid.ItemType = '{item_type}'"
+    
+  - name: department_id
+    type: integer
+    required: false
+    description: "Filter by department"
+    sql_condition: "AND j.DepartmentId = {department_id}"
+    
+  - name: min_rejection_percentage
+    type: number
+    required: false
+    description: "Minimum rejection percentage threshold"
+    sql_condition: |
+      AND CASE 
+        WHEN gid.ReceivedQuantity > 0 AND gid.ReturnedQuantity IS NOT NULL
+        THEN (gid.ReturnedQuantity / gid.ReceivedQuantity * 100)
+        ELSE 0
+      END >= {min_rejection_percentage}
+
+aggregation_queries:
+  qc_status_summary: |
+    SELECT 
+      g.QcStatus,
+      COUNT(DISTINCT g.GRNId) as GRNCount,
+      COUNT(gid.GRNItemDetailsId) as ItemCount,
+      SUM(gid.ReceivedQuantity) as TotalReceivedQuantity,
+      SUM(COALESCE(gid.ReturnedQuantity, 0)) as TotalRejectedQuantity,
+      ROUND(AVG(
+        CASE 
+          WHEN gid.ReceivedQuantity > 0 
+          THEN ((gid.ReceivedQuantity - COALESCE(gid.ReturnedQuantity, 0)) / gid.ReceivedQuantity * 100)
+          ELSE 0
+        END
+      ), 2) as AvgAcceptanceRate,
+      SUM(gid.Amount) as TotalValue,
+      SUM(CASE WHEN gid.ReturnedQuantity IS NOT NULL AND gid.Rate IS NOT NULL
+               THEN (gid.ReturnedQuantity * gid.Rate) ELSE 0 END) as TotalRejectionValue
+    FROM GRNs g
+    LEFT JOIN GRNItemDetails gid ON g.GRNId = gid.GRNId AND gid.IsActive = true
+    WHERE g.IsActive = true AND g.CustomerType = 'Supplier'
+    GROUP BY g.QcStatus
+    ORDER BY GRNCount DESC
+
+  supplier_quality_performance: |
+    SELECT 
+      s.SupplierId,
+      s.CompanyName,
+      s.SupplierCode,
+      COUNT(DISTINCT g.GRNId) as TotalGRNs,
+      COUNT(gid.GRNItemDetailsId) as TotalItems,
+      COUNT(CASE WHEN g.QcStatus = 'QC_COMPLETE' THEN gid.GRNItemDetailsId END) as AcceptedItems,
+      COUNT(CASE WHEN g.QcStatus IN ('REJECTED', 'PARTIALLY_REJECTED') THEN gid.GRNItemDetailsId END) as RejectedItems,
+      ROUND(
+        CASE 
+          WHEN COUNT(gid.GRNItemDetailsId) > 0 
+          THEN (COUNT(CASE WHEN g.QcStatus = 'QC_COMPLETE' THEN gid.GRNItemDetailsId END) * 100.0 / COUNT(gid.GRNItemDetailsId))
+          ELSE 0 
+        END, 2
+      ) as QualityAcceptanceRate,
+      ROUND(
+        CASE 
+          WHEN COUNT(gid.GRNItemDetailsId) > 0 
+          THEN (COUNT(CASE WHEN g.QcStatus IN ('REJECTED', 'PARTIALLY_REJECTED') THEN gid.GRNItemDetailsId END) * 100.0 / COUNT(gid.GRNItemDetailsId))
+          ELSE 0 
+        END, 2
+      ) as QualityRejectionRate,
+      SUM(CASE WHEN gid.ReturnedQuantity IS NOT NULL AND gid.Rate IS NOT NULL
+               THEN (gid.ReturnedQuantity * gid.Rate) ELSE 0 END) as TotalRejectionValue
+    FROM Suppliers s
+    LEFT JOIN GRNs g ON s.SupplierId = g.SupplierId AND g.IsActive = true AND g.CustomerType = 'Supplier'
+    LEFT JOIN GRNItemDetails gid ON g.GRNId = gid.GRNId AND gid.IsActive = true
+    WHERE s.IsActive = true
+    GROUP BY s.SupplierId, s.CompanyName, s.SupplierCode
+    HAVING COUNT(DISTINCT g.GRNId) > 0
+    ORDER BY QualityRejectionRate DESC, TotalRejectionValue DESC
+
+  monthly_quality_trends: |
+    SELECT 
+      DATE_TRUNC('month', g.DateCreated) as Month,
+      COUNT(DISTINCT g.GRNId) as TotalGRNs,
+      COUNT(gid.GRNItemDetailsId) as TotalItems,
+      COUNT(CASE WHEN g.QcStatus = 'QC_COMPLETE' THEN gid.GRNItemDetailsId END) as AcceptedItems,
+      COUNT(CASE WHEN g.QcStatus IN ('REJECTED', 'PARTIALLY_REJECTED') THEN gid.GRNItemDetailsId END) as RejectedItems,
+      ROUND(
+        CASE 
+          WHEN COUNT(gid.GRNItemDetailsId) > 0 
+          THEN (COUNT(CASE WHEN g.QcStatus = 'QC_COMPLETE' THEN gid.GRNItemDetailsId END) * 100.0 / COUNT(gid.GRNItemDetailsId))
+          ELSE 0 
+        END, 2
+      ) as MonthlyAcceptanceRate,
+      SUM(CASE WHEN gid.ReturnedQuantity IS NOT NULL AND gid.Rate IS NOT NULL
+               THEN (gid.ReturnedQuantity * gid.Rate) ELSE 0 END) as MonthlyRejectionValue
+    FROM GRNs g
+    LEFT JOIN GRNItemDetails gid ON g.GRNId = gid.GRNId AND gid.IsActive = true
+    WHERE g.IsActive = true AND g.CustomerType = 'Supplier'
+    GROUP BY DATE_TRUNC('month', g.DateCreated)
+    ORDER BY Month DESC
+
+  item_type_quality_analysis: |
+    SELECT 
+      gid.ItemType,
+      COUNT(gid.GRNItemDetailsId) as TotalItems,
+      COUNT(CASE WHEN g.QcStatus = 'QC_COMPLETE' THEN gid.GRNItemDetailsId END) as AcceptedItems,
+      COUNT(CASE WHEN g.QcStatus IN ('REJECTED', 'PARTIALLY_REJECTED') THEN gid.GRNItemDetailsId END) as RejectedItems,
+      ROUND(
+        CASE 
+          WHEN COUNT(gid.GRNItemDetailsId) > 0 
+          THEN (COUNT(CASE WHEN g.QcStatus IN ('REJECTED', 'PARTIALLY_REJECTED') THEN gid.GRNItemDetailsId END) * 100.0 / COUNT(gid.GRNItemDetailsId))
+          ELSE 0 
+        END, 2
+      ) as RejectionRate,
+      SUM(gid.ReceivedQuantity) as TotalReceivedQuantity,
+      SUM(COALESCE(gid.ReturnedQuantity, 0)) as TotalRejectedQuantity,
+      SUM(CASE WHEN gid.ReturnedQuantity IS NOT NULL AND gid.Rate IS NOT NULL
+               THEN (gid.ReturnedQuantity * gid.Rate) ELSE 0 END) as TotalRejectionValue
+    FROM GRNs g
+    INNER JOIN GRNItemDetails gid ON g.GRNId = gid.GRNId AND gid.IsActive = true
+    WHERE g.IsActive = true AND g.CustomerType = 'Supplier'
+    GROUP BY gid.ItemType
+    ORDER BY RejectionRate DESC
+
+output_format: table
+
+tags:
+  - quality_control
+  - qc_monitoring
+  - grn_analysis
+  - rejection_analysis
+  - acceptance_rate
+  - quality_trends
+  - supplier_quality
+
+examples:
+  - "Show QC status for all pending GRNs"
+  - "What is the rejection rate for Kumar Textiles?"
+  - "Show quality control summary for this month"
+  - "Which suppliers have the highest rejection rates?"
+  - "Show overdue QC items"
+  - "Quality analysis for fabric items"
+  - "Show rejected GRNs with high value"
+  - "QC performance trends over last 6 months"
+  - "Show quality issues by item type"
+  - "List all GRNs pending quality approval"

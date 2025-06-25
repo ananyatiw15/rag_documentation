@@ -1,0 +1,612 @@
+# Function schemas for Jobwork module backend functions
+# Defines input/output schemas for all backend functions
+
+function_schemas:
+  JobworkService:
+    getJobworkSummary:
+      input_schema:
+        type: "object"
+        properties:
+          jobworkId:
+            type: "integer"
+            description: "Specific jobwork ID to retrieve"
+            minimum: 1
+          filters:
+            type: "object"
+            properties:
+              status:
+                type: "string"
+                enum: ["DRAFT", "APPROVED", "IN_PROGRESS", "COMPLETED", "CANCELLED"]
+              supplierId:
+                type: "integer"
+                minimum: 1
+              departmentId:
+                type: "integer"
+                minimum: 1
+              dateRange:
+                type: "object"
+                properties:
+                  startDate:
+                    type: "string"
+                    format: "date"
+                  endDate:
+                    type: "string"
+                    format: "date"
+                required: ["startDate", "endDate"]
+      
+      output_schema:
+        type: "object"
+        properties:
+          success:
+            type: "boolean"
+          data:
+            type: "object"
+            properties:
+              jobworks:
+                type: "array"
+                items:
+                  type: "object"
+                  properties:
+                    JobworkId:
+                      type: "integer"
+                    CreationDate:
+                      type: "string"
+                      format: "date"
+                    Status:
+                      type: "string"
+                    Total:
+                      type: "number"
+                    DeliveryDate:
+                      type: "string"
+                      format: "date"
+                    Supplier:
+                      type: "object"
+                      properties:
+                        SupplierId:
+                          type: "integer"
+                        CompanyName:
+                          type: "string"
+                        SupplierCode:
+                          type: "string"
+                    Department:
+                      type: "object"
+                      properties:
+                        DepartmentId:
+                          type: "integer"
+                        DepartmentName:
+                          type: "string"
+              summary:
+                type: "object"
+                properties:
+                  totalJobworks:
+                    type: "integer"
+                  totalValue:
+                    type: "number"
+                  statusBreakdown:
+                    type: "object"
+                    additionalProperties:
+                      type: "integer"
+          message:
+            type: "string"
+
+    getJobworkList:
+      input_schema:
+        type: "object"
+        properties:
+          page:
+            type: "integer"
+            minimum: 1
+            default: 1
+          limit:
+            type: "integer"
+            minimum: 1
+            maximum: 100
+            default: 20
+          filters:
+            type: "object"
+            properties:
+              search:
+                type: "string"
+              status:
+                type: "array"
+                items:
+                  type: "string"
+                  enum: ["DRAFT", "APPROVED", "IN_PROGRESS", "COMPLETED", "CANCELLED"]
+              supplierId:
+                type: "integer"
+              departmentId:
+                type: "integer"
+              sortBy:
+                type: "string"
+                enum: ["CreationDate", "DeliveryDate", "Total", "Status"]
+                default: "CreationDate"
+              sortOrder:
+                type: "string"
+                enum: ["ASC", "DESC"]
+                default: "DESC"
+      
+      output_schema:
+        type: "object"
+        properties:
+          success:
+            type: "boolean"
+          data:
+            type: "object"
+            properties:
+              jobworks:
+                type: "array"
+                items:
+                  $ref: "#/components/schemas/JobworkSummary"
+              pagination:
+                type: "object"
+                properties:
+                  currentPage:
+                    type: "integer"
+                  totalPages:
+                    type: "integer"
+                  totalRecords:
+                    type: "integer"
+                  hasNext:
+                    type: "boolean"
+                  hasPrevious:
+                    type: "boolean"
+
+  MaterialFlowService:
+    trackMaterialFlow:
+      input_schema:
+        type: "object"
+        required: ["jobworkId"]
+        properties:
+          jobworkId:
+            type: "integer"
+            minimum: 1
+          includeHistory:
+            type: "boolean"
+            default: false
+      
+      output_schema:
+        type: "object"
+        properties:
+          success:
+            type: "boolean"
+          data:
+            type: "object"
+            properties:
+              jobworkInfo:
+                $ref: "#/components/schemas/JobworkBasicInfo"
+              materialFlow:
+                type: "array"
+                items:
+                  type: "object"
+                  properties:
+                    lineItemId:
+                      type: "integer"
+                    itemDescription:
+                      type: "string"
+                    plannedQuantity:
+                      type: "number"
+                    deliveredQuantity:
+                      type: "number"
+                    receivedQuantity:
+                      type: "number"
+                    acceptedQuantity:
+                      type: "number"
+                    rejectedQuantity:
+                      type: "number"
+                    wasteQuantity:
+                      type: "number"
+                    flowStatus:
+                      type: "string"
+                      enum: ["PENDING", "DELIVERED", "RECEIVED", "COMPLETED"]
+                    deliveryDetails:
+                      type: "object"
+                      properties:
+                        deliveryChallanNumber:
+                          type: "string"
+                        deliveryDate:
+                          type: "string"
+                          format: "date"
+                    receiptDetails:
+                      type: "object"
+                      properties:
+                        grnNumber:
+                          type: "string"
+                        grnDate:
+                          type: "string"
+                          format: "date"
+                        qualityStatus:
+                          type: "string"
+              reconciliation:
+                type: "object"
+                properties:
+                  totalPlanned:
+                    type: "number"
+                  totalDelivered:
+                    type: "number"
+                  totalReceived:
+                    type: "number"
+                  totalWaste:
+                    type: "number"
+                  reconciliationStatus:
+                    type: "string"
+                    enum: ["BALANCED", "VARIANCE", "PENDING"]
+
+  VendorPerformanceService:
+    getVendorPerformanceMetrics:
+      input_schema:
+        type: "object"
+        properties:
+          supplierId:
+            type: "integer"
+            minimum: 1
+          dateRange:
+            type: "object"
+            properties:
+              startDate:
+                type: "string"
+                format: "date"
+              endDate:
+                type: "string"
+                format: "date"
+          includeComparison:
+            type: "boolean"
+            default: false
+      
+      output_schema:
+        type: "object"
+        properties:
+          success:
+            type: "boolean"
+          data:
+            type: "object"
+            properties:
+              suppliers:
+                type: "array"
+                items:
+                  type: "object"
+                  properties:
+                    supplierInfo:
+                      $ref: "#/components/schemas/SupplierBasicInfo"
+                    performanceMetrics:
+                      type: "object"
+                      properties:
+                        qualityMetrics:
+                          type: "object"
+                          properties:
+                            acceptanceRate:
+                              type: "number"
+                            rejectionRate:
+                              type: "number"
+                            qualityScore:
+                              type: "number"
+                        deliveryMetrics:
+                          type: "object"
+                          properties:
+                            onTimeDeliveryRate:
+                              type: "number"
+                            averageDelayDays:
+                              type: "number"
+                            deliveryAccuracy:
+                              type: "number"
+                        costMetrics:
+                          type: "object"
+                          properties:
+                            costVariance:
+                              type: "number"
+                            totalValue:
+                              type: "number"
+                        overallScore:
+                          type: "number"
+                        performanceGrade:
+                          type: "string"
+                          enum: ["EXCELLENT", "GOOD", "ACCEPTABLE", "POOR"]
+              benchmarks:
+                type: "object"
+                properties:
+                  industryAverage:
+                    type: "object"
+                  topPerformer:
+                    type: "object"
+
+  QualityControlService:
+    getQualityMetrics:
+      input_schema:
+        type: "object"
+        properties:
+          jobworkId:
+            type: "integer"
+            minimum: 1
+          supplierId:
+            type: "integer"
+            minimum: 1
+          dateRange:
+            type: "object"
+            properties:
+              startDate:
+                type: "string"
+                format: "date"
+              endDate:
+                type: "string"
+                format: "date"
+          groupBy:
+            type: "string"
+            enum: ["supplier", "department", "itemType", "month"]
+            default: "supplier"
+      
+      output_schema:
+        type: "object"
+        properties:
+          success:
+            type: "boolean"
+          data:
+            type: "object"
+            properties:
+              qualityMetrics:
+                type: "array"
+                items:
+                  type: "object"
+                  properties:
+                    groupKey:
+                      type: "string"
+                    groupName:
+                      type: "string"
+                    totalGRNs:
+                      type: "integer"
+                    totalQuantity:
+                      type: "number"
+                    acceptedQuantity:
+                      type: "number"
+                    rejectedQuantity:
+                      type: "number"
+                    acceptanceRate:
+                      type: "number"
+                    rejectionRate:
+                      type: "number"
+                    qualityScore:
+                      type: "number"
+                    rejectionReasons:
+                      type: "array"
+                      items:
+                        type: "object"
+                        properties:
+                          reason:
+                            type: "string"
+                          count:
+                            type: "integer"
+                          percentage:
+                            type: "number"
+              summary:
+                type: "object"
+                properties:
+                  overallAcceptanceRate:
+                    type: "number"
+                  overallRejectionRate:
+                    type: "number"
+                  totalGRNsProcessed:
+                    type: "integer"
+                  qualityTrend:
+                    type: "string"
+                    enum: ["IMPROVING", "STABLE", "DECLINING"]
+
+  OverdueAnalysisService:
+    getOverdueJobworks:
+      input_schema:
+        type: "object"
+        properties:
+          riskLevel:
+            type: "string"
+            enum: ["CRITICAL", "HIGH", "MEDIUM", "LOW"]
+          supplierId:
+            type: "integer"
+            minimum: 1
+          departmentId:
+            type: "integer"
+            minimum: 1
+          minDelayDays:
+            type: "integer"
+            minimum: 0
+          sortBy:
+            type: "string"
+            enum: ["delayDays", "value", "riskLevel"]
+            default: "delayDays"
+      
+      output_schema:
+        type: "object"
+        properties:
+          success:
+            type: "boolean"
+          data:
+            type: "object"
+            properties:
+              overdueJobworks:
+                type: "array"
+                items:
+                  type: "object"
+                  properties:
+                    jobworkInfo:
+                      $ref: "#/components/schemas/JobworkBasicInfo"
+                    delayInfo:
+                      type: "object"
+                      properties:
+                        plannedDeliveryDate:
+                          type: "string"
+                          format: "date"
+                        actualDeliveryDate:
+                          type: "string"
+                          format: "date"
+                          nullable: true
+                        delayDays:
+                          type: "integer"
+                        riskLevel:
+                          type: "string"
+                          enum: ["CRITICAL", "HIGH", "MEDIUM", "LOW"]
+                        estimatedLoss:
+                          type: "number"
+                    supplierInfo:
+                      $ref: "#/components/schemas/SupplierBasicInfo"
+                    contactInfo:
+                      type: "object"
+                      properties:
+                        vendorPocName:
+                          type: "string"
+                        vendorPocEmail:
+                          type: "string"
+                        vendorPocPhone:
+                          type: "string"
+              summary:
+                type: "object"
+                properties:
+                  totalOverdueJobworks:
+                    type: "integer"
+                  totalOverdueValue:
+                    type: "number"
+                  averageDelayDays:
+                    type: "number"
+                  riskDistribution:
+                    type: "object"
+                    properties:
+                      critical:
+                        type: "integer"
+                      high:
+                        type: "integer"
+                      medium:
+                        type: "integer"
+                      low:
+                        type: "integer"
+
+# Common schema components
+components:
+  schemas:
+    JobworkBasicInfo:
+      type: "object"
+      properties:
+        JobworkId:
+          type: "integer"
+        CreationDate:
+          type: "string"
+          format: "date"
+        Status:
+          type: "string"
+        Total:
+          type: "number"
+        DeliveryDate:
+          type: "string"
+          format: "date"
+        Currency:
+          type: "string"
+    
+    SupplierBasicInfo:
+      type: "object"
+      properties:
+        SupplierId:
+          type: "integer"
+        CompanyName:
+          type: "string"
+        SupplierCode:
+          type: "string"
+        PrimaryPhone:
+          type: "string"
+        CompanyEmail:
+          type: "string"
+    
+    JobworkSummary:
+      type: "object"
+      properties:
+        JobworkId:
+          type: "integer"
+        CreationDate:
+          type: "string"
+          format: "date"
+        Status:
+          type: "string"
+        Total:
+          type: "number"
+        DeliveryDate:
+          type: "string"
+          format: "date"
+        Supplier:
+          $ref: "#/components/schemas/SupplierBasicInfo"
+        Department:
+          type: "object"
+          properties:
+            DepartmentId:
+              type: "integer"
+            DepartmentName:
+              type: "string"
+        LineItemsCount:
+          type: "integer"
+        IsOverdue:
+          type: "boolean"
+        DelayDays:
+          type: "integer"
+          nullable: true
+
+# Validation rules
+validation_rules:
+  common_validations:
+    - rule: "Date ranges must have startDate <= endDate"
+      applies_to: ["dateRange objects"]
+      
+    - rule: "Page number must be positive integer"
+      applies_to: ["pagination parameters"]
+      
+    - rule: "Limit must be between 1 and 100"
+      applies_to: ["pagination parameters"]
+      
+    - rule: "IDs must be positive integers"
+      applies_to: ["all ID parameters"]
+      
+    - rule: "Enum values must match predefined options"
+      applies_to: ["status, riskLevel, sortBy parameters"]
+
+  business_validations:
+    - rule: "User must have permission to access supplier data"
+      applies_to: ["supplier-specific queries"]
+      
+    - rule: "Date range cannot exceed 1 year for performance queries"
+      applies_to: ["vendor performance, quality metrics"]
+      
+    - rule: "Jobwork must exist and be active"
+      applies_to: ["jobwork-specific queries"]
+
+# Response format standards
+response_standards:
+  success_response:
+    structure:
+      - "success: boolean (always true for successful responses)"
+      - "data: object (contains the actual response data)"
+      - "message: string (optional success message)"
+      - "timestamp: string (ISO 8601 format)"
+      - "requestId: string (unique request identifier)"
+  
+  error_response:
+    structure:
+      - "success: boolean (always false for error responses)"
+      - "error: object with code, message, and details"
+      - "timestamp: string (ISO 8601 format)"
+      - "requestId: string (unique request identifier)"
+  
+  pagination_response:
+    structure:
+      - "data: array (paginated results)"
+      - "pagination: object with currentPage, totalPages, totalRecords, hasNext, hasPrevious, pageSize"
+
+# Performance considerations
+performance_guidelines:
+  query_optimization:
+    - "Use database indexes for frequently queried fields"
+    - "Implement query result caching for expensive operations"
+    - "Use pagination for large result sets"
+    - "Optimize JOIN operations in complex queries"
+  
+  response_optimization:
+    - "Compress large responses using gzip"
+    - "Use appropriate HTTP caching headers"
+    - "Implement response streaming for large datasets"
+    - "Return only requested fields when possible"
+  
+  resource_management:
+    - "Set appropriate timeout values for database queries"
+    - "Implement connection pooling for database access"
+    - "Use async processing for long-running operations"
+    - "Monitor and limit concurrent request processing"

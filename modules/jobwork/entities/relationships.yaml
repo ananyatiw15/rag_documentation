@@ -1,0 +1,298 @@
+# Entity relationships for Jobwork module
+# Defines foreign key associations and business join logic
+
+primary_relationships:
+  jobworks:
+    belongs_to:
+      - entity: Suppliers
+        foreign_key: SupplierId
+        target_key: SupplierId
+        relationship_type: many_to_one
+        business_logic: "Each jobwork is assigned to one supplier for execution"
+        
+      - entity: Departments
+        foreign_key: DepartmentId
+        target_key: DepartmentId
+        relationship_type: many_to_one
+        business_logic: "Jobwork belongs to a specific department for tracking"
+        
+      - entity: JobworkTypes
+        foreign_key: JobworkTypeId
+        target_key: JobworkTypeId
+        relationship_type: many_to_one
+        business_logic: "Categorizes jobwork by type (cutting, stitching, etc.)"
+        
+      - entity: PaymentTerms
+        foreign_key: PaymentTermId
+        target_key: PaymentTermId
+        relationship_type: many_to_one
+        business_logic: "Defines payment conditions for the jobwork"
+        
+      - entity: SourceAddress
+        foreign_key: SupplierAddressId
+        target_key: SourceAddressId
+        alias: SupplierAddress
+        relationship_type: many_to_one
+        business_logic: "Supplier's primary address for jobwork"
+        
+      - entity: SourceAddress
+        foreign_key: BillingAddressId
+        target_key: SourceAddressId
+        alias: BillingAddress
+        relationship_type: many_to_one
+        business_logic: "Billing address for invoicing"
+        
+      - entity: SourceAddress
+        foreign_key: ShippingAddressId
+        target_key: SourceAddressId
+        alias: ShippingAddress
+        relationship_type: many_to_one
+        business_logic: "Delivery address for materials"
+        
+      - entity: User
+        foreign_key: VendorPocId
+        target_key: id
+        alias: VendorPoc
+        relationship_type: many_to_one
+        business_logic: "Vendor point of contact for communication"
+        
+      - entity: User
+        foreign_key: CreatedBy
+        target_key: id
+        alias: CreatedByUser
+        relationship_type: many_to_one
+        business_logic: "User who created the jobwork record"
+        
+      - entity: User
+        foreign_key: ModifiedBy
+        target_key: id
+        alias: ModifiedByUser
+        relationship_type: many_to_one
+        business_logic: "User who last modified the jobwork record"
+
+    has_many:
+      - entity: JobworkLineItems
+        foreign_key: JobworkId
+        relationship_type: one_to_many
+        business_logic: "Each jobwork contains multiple line items for different materials"
+        
+      - entity: JobworkLogs
+        foreign_key: JobworkId
+        relationship_type: one_to_many
+        business_logic: "Audit trail for jobwork changes"
+        
+      - entity: JobworkLinkedResources
+        foreign_key: JobworkId
+        relationship_type: one_to_many
+        business_logic: "Links jobwork to other resources like PO line items"
+        
+      - entity: ItemTags
+        foreign_key: ItemId
+        scope: "ItemType: JOB_WORK"
+        relationship_type: one_to_many
+        business_logic: "Tags associated with jobwork for categorization"
+        
+      - entity: VendorEmailRequests
+        foreign_key: ResourceId
+        scope: "ResourceType: JW"
+        relationship_type: one_to_many
+        business_logic: "Email communications related to jobwork"
+
+  jobwork_line_items:
+    belongs_to:
+      - entity: Jobworks
+        foreign_key: JobworkId
+        target_key: JobworkId
+        relationship_type: many_to_one
+        business_logic: "Line item belongs to a specific jobwork"
+        
+      - entity: UnitOfMeasures
+        foreign_key: Unit
+        target_key: UnitOfMeasureId
+        relationship_type: many_to_one
+        business_logic: "Unit of measurement for the line item quantity"
+        
+      - entity: Tax
+        foreign_key: Tax
+        target_key: TaxId
+        alias: TaxDetail
+        relationship_type: many_to_one
+        business_logic: "Tax configuration for the line item"
+        
+      - entity: Styles
+        foreign_key: ItemId
+        target_key: StyleId
+        alias: Style
+        relationship_type: many_to_one
+        business_logic: "When line item is a style/garment"
+        condition: "ItemType = 'STYLE'"
+        
+      - entity: RMVariations
+        foreign_key: ItemId
+        target_key: RMVariationId
+        alias: Fabric
+        relationship_type: many_to_one
+        business_logic: "When line item is fabric material"
+        condition: "ItemType = 'FABRIC'"
+        
+      - entity: RMs
+        foreign_key: ItemId
+        target_key: RMId
+        alias: Accessory
+        relationship_type: many_to_one
+        business_logic: "When line item is accessory material"
+        condition: "ItemType = 'ACCESSORY'"
+        
+      - entity: User
+        foreign_key: CreatedBy
+        target_key: id
+        alias: CreatedByUser
+        relationship_type: many_to_one
+        business_logic: "User who created the line item"
+        
+      - entity: User
+        foreign_key: ModifiedBy
+        target_key: id
+        alias: ModifiedByUser
+        relationship_type: many_to_one
+        business_logic: "User who last modified the line item"
+
+    has_many:
+      - entity: JobworkLineItemLogs
+        foreign_key: JobworkLineItemId
+        relationship_type: one_to_many
+        business_logic: "Audit trail for line item changes"
+        
+      - entity: ShipmentDateLogs
+        foreign_key: ResourceId
+        relationship_type: one_to_many
+        business_logic: "Delivery date change history"
+
+  suppliers:
+    has_many:
+      - entity: Jobworks
+        foreign_key: SupplierId
+        relationship_type: one_to_many
+        business_logic: "Supplier can have multiple jobworks assigned"
+        
+      - entity: GRNs
+        foreign_key: SupplierId
+        relationship_type: one_to_many
+        business_logic: "Goods received from supplier"
+        
+      - entity: DeliveryChallans
+        foreign_key: SupplierId
+        relationship_type: one_to_many
+        business_logic: "Delivery documents from supplier"
+        
+      - entity: PurchaseOrders
+        foreign_key: SupplierId
+        relationship_type: one_to_many
+        business_logic: "Purchase orders placed with supplier"
+
+business_join_patterns:
+  material_flow_tracking:
+    description: "Track material flow from jobwork to delivery"
+    tables:
+      - Jobworks (j)
+      - JobworkLineItems (jli)
+      - DeliveryChallans (dc)
+      - DeliveryChallanItemDetails (dcid)
+      - GRNs (g)
+      - GRNItemDetails (gid)
+    join_logic: |
+      FROM Jobworks j
+      INNER JOIN JobworkLineItems jli ON j.JobworkId = jli.JobworkId
+      LEFT JOIN DeliveryChallans dc ON j.JobworkId = dc.JobworkId
+      LEFT JOIN DeliveryChallanItemDetails dcid ON dc.DeliveryChallanId = dcid.DeliveryChallanId
+      LEFT JOIN GRNs g ON j.JobworkId = g.JobworkId
+      LEFT JOIN GRNItemDetails gid ON g.GRNId = gid.GRNId
+    business_purpose: "Complete material lifecycle tracking"
+
+  vendor_performance:
+    description: "Evaluate supplier performance across jobworks"
+    tables:
+      - Suppliers (s)
+      - Jobworks (j)
+      - JobworkLineItems (jli)
+      - DeliveryChallans (dc)
+      - GRNs (g)
+    join_logic: |
+      FROM Suppliers s
+      INNER JOIN Jobworks j ON s.SupplierId = j.SupplierId
+      INNER JOIN JobworkLineItems jli ON j.JobworkId = jli.JobworkId
+      LEFT JOIN DeliveryChallans dc ON j.JobworkId = dc.JobworkId
+      LEFT JOIN GRNs g ON j.JobworkId = g.JobworkId
+    business_purpose: "Supplier performance metrics and scorecards"
+
+  qc_monitoring:
+    description: "Quality control tracking across jobworks"
+    tables:
+      - Jobworks (j)
+      - GRNs (g)
+      - GRNItemDetails (gid)
+      - GRNItemsQc (giq)
+    join_logic: |
+      FROM Jobworks j
+      INNER JOIN GRNs g ON j.JobworkId = g.JobworkId
+      INNER JOIN GRNItemDetails gid ON g.GRNId = gid.GRNId
+      LEFT JOIN GRNItemsQc giq ON gid.GRNItemDetailId = giq.GRNItemDetailId
+    business_purpose: "Quality metrics and rejection analysis"
+
+  jobwork_summary:
+    description: "Comprehensive jobwork overview with all related data"
+    tables:
+      - Jobworks (j)
+      - Suppliers (s)
+      - Departments (d)
+      - JobworkTypes (jt)
+      - JobworkLineItems (jli)
+      - User (u1, u2, u3)
+    join_logic: |
+      FROM Jobworks j
+      INNER JOIN Suppliers s ON j.SupplierId = s.SupplierId
+      LEFT JOIN Departments d ON j.DepartmentId = d.DepartmentId
+      LEFT JOIN JobworkTypes jt ON j.JobworkTypeId = jt.JobworkTypeId
+      LEFT JOIN JobworkLineItems jli ON j.JobworkId = jli.JobworkId
+      LEFT JOIN User u1 ON j.CreatedBy = u1.id
+      LEFT JOIN User u2 ON j.ModifiedBy = u2.id
+      LEFT JOIN User u3 ON j.VendorPocId = u3.id
+    business_purpose: "Complete jobwork information for reporting"
+
+cross_module_relationships:
+  sales_orders:
+    description: "Jobworks linked to sales orders through various mechanisms"
+    relationship_type: "indirect"
+    link_mechanism: "JobworkLinkedResources or direct SO reference"
+    business_logic: "Jobworks fulfill sales order requirements"
+
+  purchase_orders:
+    description: "Jobworks may be linked to purchase orders for materials"
+    relationship_type: "indirect"
+    link_mechanism: "JobworkLinkedResources with POLINEITEM type"
+    business_logic: "Materials for jobwork sourced through POs"
+
+  inventory:
+    description: "Jobwork affects inventory through material consumption and production"
+    relationship_type: "indirect"
+    link_mechanism: "ItemInventory updates based on jobwork completion"
+    business_logic: "Inventory adjustments based on jobwork material flow"
+
+data_integrity_rules:
+  - rule: "Jobwork must have at least one line item"
+    validation: "COUNT(JobworkLineItems) > 0 for each JobworkId"
+    
+  - rule: "Line item quantities must be positive"
+    validation: "Quantity > 0 AND Rate >= 0"
+    
+  - rule: "Delivery dates must be future dates when created"
+    validation: "DeliveryDate >= CreationDate"
+    
+  - rule: "Waste percentage should be reasonable"
+    validation: "WastePercent >= 0 AND WastePercent <= 50"
+    
+  - rule: "GRN quantities cannot exceed delivery quantities"
+    validation: "SUM(GRN quantities) <= SUM(Delivery quantities) per jobwork"
+    
+  - rule: "Active jobworks must have valid supplier"
+    validation: "Suppliers.IsActive = true when Jobworks.IsActive = true"
