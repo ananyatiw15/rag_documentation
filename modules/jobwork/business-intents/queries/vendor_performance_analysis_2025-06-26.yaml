@@ -1,0 +1,205 @@
+intent: vendor_performance_analysis
+description: >
+  Comprehensive vendor performance analysis including delivery performance, quality metrics, 
+  financial summary, and reliability indicators. This helps procurement and operations teams 
+  evaluate supplier performance and make informed sourcing decisions.
+
+trigger_type: SQL
+
+sql_template: |
+  WITH supplier_metrics AS (
+    SELECT 
+      s."SupplierId",
+      s."CompanyName",
+      s."SupplierCode", 
+      s."FirstName",
+      s."LastName",
+      s."PrimaryPhone",
+      s."CompanyEmail",
+      s."City",
+      s."State",
+      
+      -- Jobwork metrics (optimized aggregations)
+      COUNT(j."JobworkId") AS total_jobworks,
+      SUM(CASE WHEN j."Status" = 'COMPLETED' THEN 1 ELSE 0 END) AS completed_jobworks,
+      SUM(CASE WHEN j."Status" = 'IN_PROGRESS' THEN 1 ELSE 0 END) AS inprogress_jobworks,
+      SUM(CASE WHEN j."DeliveryDate" < CURRENT_DATE AND j."IsFullfiled" = false THEN 1 ELSE 0 END) AS overdue_jobworks,
+      SUM(CASE WHEN j."DeliveryDate" >= CURRENT_DATE OR j."IsFullfiled" = true THEN 1 ELSE 0 END) AS ontime_jobworks,
+      
+      -- Financial metrics (single pass)
+      COALESCE(SUM(j."Total"), 0) AS total_value,
+      COALESCE(AVG(j."Total"), 0) AS avg_value,
+      COALESCE(MAX(j."Total"), 0) AS max_value,
+      COALESCE(MIN(j."Total"), 0) AS min_value
+      
+    FROM "Suppliers" s
+      INNER JOIN "Jobworks" j ON s."SupplierId" = j."SupplierId" 
+        AND j."IsActive" = true
+        {date_filter}
+        {value_filter}
+    WHERE s."IsActive" = true
+      {supplier_filter}
+    GROUP BY s."SupplierId", s."CompanyName", s."SupplierCode", s."FirstName", 
+             s."LastName", s."PrimaryPhone", s."CompanyEmail", s."City", s."State"
+  ),
+  
+  delivery_metrics AS (
+    SELECT 
+      sm."SupplierId",
+      COUNT(DISTINCT dc."DeliveryChallanId") AS total_delivery_challans,
+      COUNT(DISTINCT g."GRNId") AS total_grns,
+      SUM(CASE WHEN g."QcStatus" = 'QC_COMPLETE' THEN 1 ELSE 0 END) AS completed_qc_grns,
+      SUM(CASE WHEN g."QcStatus" IN ('REJECTED', 'PARTIALLY_REJECTED') THEN 1 ELSE 0 END) AS rejected_grns
+      
+    FROM supplier_metrics sm
+      INNER JOIN "Jobworks" j ON sm."SupplierId" = j."SupplierId" AND j."IsActive" = true
+      INNER JOIN "JobworkLinkedResources" jlr ON j."JobworkId" = jlr."JobworkId" 
+        AND jlr."LinkedResourceType" = 'DC'
+      INNER JOIN "DeliveryChallans" dc ON jlr."LinkedResourceId" = dc."DeliveryChallanId" 
+        AND dc."CustomerType" = 'Supplier' AND dc."IsActive" = true
+      LEFT JOIN "GRNs" g ON dc."DeliveryChallanId" = g."DCId"
+        AND g."CustomerType" = 'Supplier' AND g."IsActive" = true
+    GROUP BY sm."SupplierId"
+  )
+  
+  SELECT 
+    sm."SupplierId",
+    sm."CompanyName" AS SupplierName,
+    sm."SupplierCode",
+    sm."FirstName" AS SupplierFirstName,
+    sm."LastName" AS SupplierLastName,
+    sm."PrimaryPhone" AS SupplierPhone,
+    sm."CompanyEmail" AS SupplierEmail,
+    sm."City" AS SupplierCity,
+    sm."State" AS SupplierState,
+    
+    sm.total_jobworks AS TotalJobworks,
+    sm.completed_jobworks AS CompletedJobworks,
+    sm.inprogress_jobworks AS InProgressJobworks,
+    sm.overdue_jobworks AS OverdueJobworks,
+    
+    sm.total_value AS TotalValue,
+    sm.avg_value AS AvgJobworkValue,
+    sm.max_value AS MaxJobworkValue,
+    sm.min_value AS MinJobworkValue,
+    
+    COALESCE(dm.total_delivery_challans, 0) AS TotalDeliveryChallans,
+    COALESCE(dm.total_grns, 0) AS TotalGRNs,
+    COALESCE(dm.completed_qc_grns, 0) AS CompletedQCGRNs,
+    COALESCE(dm.rejected_grns, 0) AS RejectedGRNs,
+    
+    -- Optimized percentage calculations
+    CASE 
+      WHEN sm.total_jobworks > 0 
+      THEN ROUND((sm.completed_jobworks * 100.0 / sm.total_jobworks), 2)
+      ELSE 0
+    END AS CompletionRate,
+    
+    CASE 
+      WHEN sm.total_jobworks > 0 
+      THEN ROUND((sm.ontime_jobworks * 100.0 / sm.total_jobworks), 2)
+      ELSE 0
+    END AS OnTimeDeliveryRate,
+    
+    CASE 
+      WHEN COALESCE(dm.total_grns, 0) > 0 
+      THEN ROUND((COALESCE(dm.completed_qc_grns, 0) * 100.0 / dm.total_grns), 2)
+      ELSE 0
+    END AS QualityAcceptanceRate,
+    
+    -- Optimized performance rating
+    CASE 
+      WHEN sm.total_jobworks = 0 THEN 'NO_DATA'
+      WHEN sm.overdue_jobworks > (sm.total_jobworks * 0.2) THEN 'POOR'
+      WHEN sm.completed_jobworks > (sm.total_jobworks * 0.8) THEN 'EXCELLENT'
+      WHEN sm.completed_jobworks > (sm.total_jobworks * 0.6) THEN 'GOOD'
+      ELSE 'AVERAGE'
+    END AS PerformanceRating
+    
+  FROM supplier_metrics sm
+    LEFT JOIN delivery_metrics dm ON sm."SupplierId" = dm."SupplierId"
+  
+  WHERE sm.total_jobworks > 0
+    {performance_filter}
+  
+  ORDER BY sm.total_value DESC, CompletionRate DESC
+  LIMIT 1000;
+
+inputs:
+  - name: supplier_id
+    type: integer
+    required: false
+    description: "Specific supplier ID to analyze"
+    
+  - name: supplier_name
+    type: string
+    required: false
+    description: "Filter by supplier company name"
+    
+  - name: city
+    type: string
+    required: false
+    description: "Filter by supplier city"
+    
+  - name: state
+    type: string
+    required: false
+    description: "Filter by supplier state"
+    
+  - name: performance_rating
+    type: enum
+    required: false
+    description: "Filter by performance rating (EXCELLENT, GOOD, AVERAGE, POOR)"
+    
+  - name: min_completion_rate
+    type: number
+    required: false
+    description: "Minimum completion rate percentage"
+    
+  - name: min_jobworks
+    type: integer
+    required: false
+    description: "Minimum number of jobworks"
+    
+  - name: start_date
+    type: date
+    required: false
+    description: "Filter jobworks from this date"
+    
+  - name: end_date
+    type: date
+    required: false
+    description: "Filter jobworks up to this date"
+    
+  - name: min_value
+    type: number
+    required: false
+    description: "Minimum total value"
+    
+  - name: max_value
+    type: number
+    required: false
+    description: "Maximum total value"
+
+output_format: table
+
+tags:
+  - vendor_performance
+  - supplier_analysis
+  - performance_metrics
+  - delivery_performance
+  - quality_metrics
+  - procurement
+  - sourcing
+
+examples:
+  - "Show vendor performance analysis"
+  - "Analyze performance of Kumar Textiles"
+  - "Top performing suppliers this quarter"
+  - "Suppliers with poor delivery performance"
+  - "Vendor performance by city"
+  - "Suppliers with high completion rates"
+  - "Performance analysis for Mumbai suppliers"
+  - "Vendors with quality issues"
+  - "Best performing suppliers by value"
+  - "Supplier scorecard for procurement team"

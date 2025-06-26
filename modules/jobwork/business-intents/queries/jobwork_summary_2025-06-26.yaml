@@ -1,0 +1,186 @@
+intent: jobwork_summary
+description: >
+  Comprehensive jobwork overview including basic details, supplier information, financial summary, 
+  delivery status, and current progress. This provides a complete view of jobwork operations for 
+  reporting and decision making by manufacturing teams.
+
+trigger_type: SQL
+
+sql_template: |
+  WITH jobwork_enriched AS (
+    SELECT 
+      j."JobworkId",
+      j."CreationDate",
+      j."Status",
+      j."DeliveryDate",
+      j."DeliveryDateRemarks",
+      j."Currency",
+      j."IsFullfiled",
+      j."SubTotal",
+      j."Total",
+      j."DiscountValue",
+      j."DiscountType",
+      j."DiscountTotal",
+      j."AdjustmentAmount",
+      j."AdjustmentInfo",
+      j."SupplierId",
+      j."DepartmentId",
+      j."JobworkTypeId",
+      j."VendorPocId",
+      j."CreatedBy",
+      j."createdAt",
+      
+      -- Pre-calculate delivery status
+      CASE 
+        WHEN j."DeliveryDate" < CURRENT_DATE AND j."IsFullfiled" = false THEN 'OVERDUE'
+        WHEN j."IsFullfiled" = true THEN 'COMPLETED'
+        ELSE 'ON_TRACK'
+      END AS delivery_status,
+      
+      -- Pre-calculate delay days
+      CASE 
+        WHEN j."DeliveryDate" < CURRENT_DATE AND j."IsFullfiled" = false 
+        THEN (CURRENT_DATE - j."DeliveryDate")
+        ELSE 0
+      END AS delay_days
+      
+    FROM "Jobworks" j
+    WHERE j."IsActive" = true
+      {date_filter}
+      {status_filter}
+      {jobwork_filter}
+      {overdue_filter}
+      {value_filter}
+  )
+  
+  SELECT 
+    je."JobworkId",
+    je."CreationDate",
+    je."Status",
+    je."DeliveryDate",
+    je."DeliveryDateRemarks",
+    je."Currency",
+    je."IsFullfiled",
+    je."SubTotal",
+    je."Total",
+    je."DiscountValue",
+    je."DiscountType",
+    je."DiscountTotal",
+    je."AdjustmentAmount",
+    je."AdjustmentInfo",
+    
+    s."SupplierId",
+    s."CompanyName" AS SupplierName,
+    s."SupplierCode",
+    s."FirstName" AS SupplierFirstName,
+    s."LastName" AS SupplierLastName,
+    s."PrimaryPhone" AS SupplierPhone,
+    s."CompanyEmail" AS SupplierEmail,
+    s."City" AS SupplierCity,
+    s."State" AS SupplierState,
+    
+    d."Name" AS DepartmentName,
+    jt."Name" AS JobworkTypeName,
+    
+    vendor_poc."FirstName" AS VendorPocFirstName,
+    vendor_poc."LastName" AS VendorPocLastName,
+    
+    created_user."FirstName" AS CreatedByFirstName,
+    created_user."LastName" AS CreatedByLastName,
+    je."createdAt" AS CreatedAt,
+    
+    je.delivery_status AS DeliveryStatus,
+    je.delay_days AS DelayDays
+    
+  FROM jobwork_enriched je
+    INNER JOIN "Suppliers" s ON je."SupplierId" = s."SupplierId" AND s."IsActive" = true
+    LEFT JOIN "Departments" d ON je."DepartmentId" = d."DepartmentId"
+    LEFT JOIN "JobworkTypes" jt ON je."JobworkTypeId" = jt."JobworkTypeId"
+    LEFT JOIN "User" vendor_poc ON je."VendorPocId" = vendor_poc."id"
+    LEFT JOIN "User" created_user ON je."CreatedBy" = created_user."id"
+  
+  WHERE 1=1
+    {supplier_filter}
+    {department_filter}
+  
+  ORDER BY je."CreationDate" DESC
+  LIMIT 1000;
+
+inputs:
+  - name: jobwork_id
+    type: integer
+    required: false
+    description: "Specific jobwork ID to retrieve"
+    
+  - name: supplier_id
+    type: integer
+    required: false
+    description: "Filter by specific supplier"
+    
+  - name: status
+    type: enum
+    required: false
+    description: "Filter by jobwork status (DRAFT, APPROVED, IN_PROGRESS, COMPLETED, CANCELLED)"
+    
+  - name: department_id
+    type: integer
+    required: false
+    description: "Filter by department"
+    
+  - name: start_date
+    type: date
+    required: false
+    description: "Filter jobworks created from this date"
+    
+  - name: end_date
+    type: date
+    required: false
+    description: "Filter jobworks created up to this date"
+    
+  - name: delivery_start_date
+    type: date
+    required: false
+    description: "Filter by delivery date range start"
+    
+  - name: delivery_end_date
+    type: date
+    required: false
+    description: "Filter by delivery date range end"
+    
+  - name: only_overdue
+    type: boolean
+    required: false
+    description: "Show only overdue jobworks"
+    
+  - name: min_value
+    type: number
+    required: false
+    description: "Minimum jobwork total value"
+    
+  - name: max_value
+    type: number
+    required: false
+    description: "Maximum jobwork total value"
+
+output_format: table
+
+tags:
+  - jobwork
+  - summary
+  - supplier
+  - financial
+  - delivery
+  - dashboard
+  - reporting
+
+examples:
+  - "Show me jobwork summary for this month"
+  - "Get details for jobwork 1001"
+  - "List all jobworks for Kumar Textiles"
+  - "Show overdue jobworks"
+  - "Jobwork summary for cutting department"
+  - "Show all approved jobworks"
+  - "Get jobwork overview with supplier details"
+  - "List high-value jobworks above 100000"
+  - "Show recent jobworks created this week"
+  - "Jobwork status report for all suppliers"

@@ -1,0 +1,177 @@
+intent: material_flow_tracking
+description: >
+  Track material flow from jobwork creation through delivery challan dispatch to GRN receipt. 
+  This provides visibility into the complete supply chain flow for manufacturing operations, 
+  helping teams monitor material movement and identify bottlenecks.
+
+trigger_type: SQL
+
+sql_template: |
+  WITH jobwork_base AS (
+    SELECT 
+      j."JobworkId",
+      j."Status",
+      j."CreationDate",
+      j."DeliveryDate",
+      j."SupplierId"
+    FROM "Jobworks" j
+    WHERE j."IsActive" = true
+      {date_filter}
+      {jobwork_filter}
+  ),
+  
+  flow_tracking AS (
+    SELECT 
+      jb."JobworkId",
+      jb."Status",
+      jb."CreationDate",
+      jb."DeliveryDate",
+      jb."SupplierId",
+      
+      dc."DeliveryChallanId",
+      dc."DateCreated" AS dispatch_date,
+      dc."Status" AS dc_status,
+      dc."GRNStatus" AS dc_grn_status,
+      dc."CourierType",
+      dc."TrackingNumber",
+      
+      g."GRNId",
+      g."DateCreated" AS receipt_date,
+      g."Status" AS grn_status,
+      g."QcStatus" AS grn_qc_status,
+      g."Total" AS grn_total,
+      
+      -- Pre-calculate flow status
+      CASE 
+        WHEN dc."DeliveryChallanId" IS NULL THEN 'NOT_DISPATCHED'
+        WHEN g."GRNId" IS NULL THEN 'DISPATCHED_NOT_RECEIVED'
+        WHEN g."QcStatus" = 'QC_PENDING' THEN 'RECEIVED_QC_PENDING'
+        WHEN g."QcStatus" = 'QC_COMPLETE' THEN 'QC_COMPLETED'
+        ELSE 'UNKNOWN_STATUS'
+      END AS flow_status,
+      
+      -- Pre-calculate transit days
+      CASE 
+        WHEN dc."DateCreated" IS NOT NULL AND g."DateCreated" IS NOT NULL 
+        THEN (g."DateCreated"::date - dc."DateCreated"::date)
+        ELSE NULL
+      END AS transit_days
+      
+    FROM jobwork_base jb
+      LEFT JOIN "JobworkLinkedResources" jlr ON jb."JobworkId" = jlr."JobworkId" 
+        AND jlr."LinkedResourceType" = 'DC'
+      LEFT JOIN "DeliveryChallans" dc ON jlr."LinkedResourceId" = dc."DeliveryChallanId" 
+        AND dc."CustomerType" = 'Supplier' 
+        AND dc."IsActive" = true
+      LEFT JOIN "GRNs" g ON dc."DeliveryChallanId" = g."DCId"
+        AND g."CustomerType" = 'Supplier' 
+        AND g."IsActive" = true
+    WHERE 1=1
+      {flow_status_filter}
+  )
+  
+  SELECT 
+    ft."JobworkId",
+    ft."Status" AS JobworkStatus,
+    ft."CreationDate" AS JobworkDate,
+    ft."DeliveryDate" AS ExpectedDeliveryDate,
+    
+    s."CompanyName" AS SupplierName,
+    s."SupplierCode",
+    s."City" AS SupplierCity,
+    
+    ft."DeliveryChallanId",
+    ft.dispatch_date AS DispatchDate,
+    ft.dc_status AS DCStatus,
+    ft.dc_grn_status AS DCGRNStatus,
+    ft."CourierType",
+    ft."TrackingNumber",
+    
+    ft."GRNId",
+    ft.receipt_date AS ReceiptDate,
+    ft.grn_status AS GRNStatus,
+    ft.grn_qc_status AS GRNQcStatus,
+    ft.grn_total AS GRNTotal,
+    
+    ft.flow_status AS FlowStatus,
+    ft.transit_days AS TransitDays
+    
+  FROM flow_tracking ft
+    INNER JOIN "Suppliers" s ON ft."SupplierId" = s."SupplierId" AND s."IsActive" = true
+  
+  WHERE 1=1
+    {supplier_filter}
+    {min_transit_days_filter}
+    {max_transit_days_filter}
+  
+  ORDER BY ft."CreationDate" DESC
+  LIMIT 1000;
+
+inputs:
+  - name: jobwork_id
+    type: integer
+    required: false
+    description: "Specific jobwork ID to track"
+    
+  - name: supplier_id
+    type: integer
+    required: false
+    description: "Filter by specific supplier"
+    
+  - name: flow_status
+    type: enum
+    required: false
+    description: "Filter by flow status (NOT_DISPATCHED, DISPATCHED_NOT_RECEIVED, RECEIVED_QC_PENDING, QC_COMPLETED)"
+    
+  - name: start_date
+    type: date
+    required: false
+    description: "Filter jobworks from this date"
+    
+  - name: end_date
+    type: date
+    required: false
+    description: "Filter jobworks up to this date"
+    
+  - name: dispatch_start_date
+    type: date
+    required: false
+    description: "Filter by dispatch date range start"
+    
+  - name: dispatch_end_date
+    type: date
+    required: false
+    description: "Filter by dispatch date range end"
+    
+  - name: min_transit_days
+    type: integer
+    required: false
+    description: "Minimum transit days for filtering"
+    
+  - name: max_transit_days
+    type: integer
+    required: false
+    description: "Maximum transit days for filtering"
+
+output_format: table
+
+tags:
+  - material_flow
+  - supply_chain
+  - tracking
+  - delivery
+  - grn
+  - logistics
+  - transit
+
+examples:
+  - "Track material flow for jobwork 1001"
+  - "Show material flow for Kumar Textiles"
+  - "Which jobworks are not dispatched?"
+  - "Show material flow summary"
+  - "Track materials dispatched this week"
+  - "Show jobworks with long transit times"
+  - "Material flow status for cutting department"
+  - "Track pending GRN receipts"
+  - "Show completed material flows"
+  - "Materials in transit for more than 5 days"

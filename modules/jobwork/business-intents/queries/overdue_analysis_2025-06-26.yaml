@@ -1,0 +1,222 @@
+intent: overdue_analysis
+description: >
+  Comprehensive overdue analysis for jobworks including delivery delays, aging analysis, 
+  financial impact, and supplier accountability. This helps operations teams prioritize 
+  follow-ups and manage delivery commitments effectively.
+
+trigger_type: SQL
+
+sql_template: |
+  WITH overdue_base AS (
+    SELECT 
+      j."JobworkId",
+      j."CreationDate",
+      j."Status",
+      j."DeliveryDate",
+      j."DeliveryDateRemarks",
+      j."Total",
+      j."Currency",
+      j."IsFullfiled",
+      j."SupplierId",
+      j."DepartmentId",
+      j."JobworkTypeId",
+      j."VendorPocId",
+      
+      -- Pre-calculate delay days once
+      (CURRENT_DATE - j."DeliveryDate") AS delay_days,
+      
+      -- Pre-calculate delivery status
+      CASE 
+        WHEN j."DeliveryDate" < CURRENT_DATE AND j."IsFullfiled" = false THEN 'OVERDUE'
+        WHEN j."DeliveryDate" = CURRENT_DATE AND j."IsFullfiled" = false THEN 'DUE_TODAY'
+        WHEN j."DeliveryDate" BETWEEN CURRENT_DATE + 1 AND CURRENT_DATE + 3 AND j."IsFullfiled" = false THEN 'DUE_SOON'
+        WHEN j."IsFullfiled" = true THEN 'COMPLETED'
+        ELSE 'ON_TRACK'
+      END AS delivery_status
+      
+    FROM "Jobworks" j
+    WHERE j."IsActive" = true 
+      AND j."DeliveryDate" < CURRENT_DATE 
+      AND j."IsFullfiled" = false
+      {date_filter}
+      {value_filter}
+  ),
+  
+  enriched_overdue AS (
+    SELECT 
+      ob.*,
+      
+      -- Delay category based on pre-calculated delay_days
+      CASE 
+        WHEN ob.delay_days > 30 THEN 'CRITICAL_DELAY'
+        WHEN ob.delay_days > 14 THEN 'MAJOR_DELAY'
+        WHEN ob.delay_days > 7 THEN 'MODERATE_DELAY'
+        WHEN ob.delay_days > 0 THEN 'MINOR_DELAY'
+        ELSE 'NO_DELAY'
+      END AS delay_category,
+      
+      -- Priority based on value and delay
+      CASE 
+        WHEN ob."Total" > 100000 AND ob.delay_days > 7 THEN 'HIGH_PRIORITY'
+        WHEN ob."Total" > 50000 AND ob.delay_days > 14 THEN 'HIGH_PRIORITY'
+        WHEN ob.delay_days > 30 THEN 'HIGH_PRIORITY'
+        WHEN ob."Total" > 25000 AND ob.delay_days > 7 THEN 'MEDIUM_PRIORITY'
+        WHEN ob.delay_days > 14 THEN 'MEDIUM_PRIORITY'
+        ELSE 'LOW_PRIORITY'
+      END AS follow_up_priority,
+      
+      -- Impact cost calculation
+      CASE 
+        WHEN ob."Total" IS NOT NULL AND ob.delay_days > 0 
+        THEN ROUND((ob."Total" * ob.delay_days * 0.001), 2)
+        ELSE 0
+      END AS estimated_impact_cost
+      
+    FROM overdue_base ob
+  )
+  
+  SELECT 
+    eo."JobworkId",
+    eo."CreationDate",
+    eo."Status" AS JobworkStatus,
+    eo."DeliveryDate",
+    eo."DeliveryDateRemarks",
+    eo."Total" AS JobworkValue,
+    eo."Currency",
+    eo."IsFullfiled",
+    
+    s."SupplierId",
+    s."CompanyName" AS SupplierName,
+    s."SupplierCode",
+    s."FirstName" AS SupplierFirstName,
+    s."LastName" AS SupplierLastName,
+    s."PrimaryPhone" AS SupplierPhone,
+    s."CompanyEmail" AS SupplierEmail,
+    s."City" AS SupplierCity,
+    s."State" AS SupplierState,
+    
+    d."Name" AS DepartmentName,
+    jt."Name" AS JobworkTypeName,
+    
+    vendor_poc."FirstName" AS VendorPocFirstName,
+    vendor_poc."LastName" AS VendorPocLastName,
+    vendor_poc."Email" AS VendorPocEmail,
+    vendor_poc."Phone" AS VendorPocPhone,
+    
+    eo.delay_days AS DelayDays,
+    eo.delivery_status AS DeliveryStatus,
+    eo.delay_category AS DelayCategory,
+    eo.follow_up_priority AS FollowUpPriority,
+    eo.estimated_impact_cost AS EstimatedImpactCost,
+    
+    dc."DeliveryChallanId",
+    dc."DateCreated" AS DispatchDate,
+    dc."GRNStatus" AS DCGRNStatus,
+    
+    g."GRNId",
+    g."DateCreated" AS ReceiptDate,
+    g."QcStatus" AS GRNQcStatus
+    
+  FROM enriched_overdue eo
+    INNER JOIN "Suppliers" s ON eo."SupplierId" = s."SupplierId" AND s."IsActive" = true
+    LEFT JOIN "Departments" d ON eo."DepartmentId" = d."DepartmentId"
+    LEFT JOIN "JobworkTypes" jt ON eo."JobworkTypeId" = jt."JobworkTypeId"
+    LEFT JOIN "User" vendor_poc ON eo."VendorPocId" = vendor_poc."id"
+    LEFT JOIN "JobworkLinkedResources" jlr ON eo."JobworkId" = jlr."JobworkId" 
+      AND jlr."LinkedResourceType" = 'DC'
+    LEFT JOIN "DeliveryChallans" dc ON jlr."LinkedResourceId" = dc."DeliveryChallanId" 
+      AND dc."CustomerType" = 'Supplier' AND dc."IsActive" = true
+    LEFT JOIN "GRNs" g ON dc."DeliveryChallanId" = g."DCId"
+      AND g."CustomerType" = 'Supplier' AND g."IsActive" = true
+  
+  WHERE 1=1
+    {supplier_filter}
+    {delay_filter}
+    {priority_filter}
+  
+  ORDER BY eo.delay_days DESC, eo."Total" DESC
+  LIMIT 1000;
+
+inputs:
+  - name: supplier_id
+    type: integer
+    required: false
+    description: "Filter by specific supplier"
+    
+  - name: department_id
+    type: integer
+    required: false
+    description: "Filter by department"
+    
+  - name: delay_category
+    type: enum
+    required: false
+    description: "Filter by delay category (CRITICAL_DELAY, MAJOR_DELAY, MODERATE_DELAY, MINOR_DELAY)"
+    
+  - name: follow_up_priority
+    type: enum
+    required: false
+    description: "Filter by follow-up priority (HIGH_PRIORITY, MEDIUM_PRIORITY, LOW_PRIORITY)"
+    
+  - name: min_delay_days
+    type: integer
+    required: false
+    description: "Minimum delay days"
+    
+  - name: max_delay_days
+    type: integer
+    required: false
+    description: "Maximum delay days"
+    
+  - name: min_value
+    type: number
+    required: false
+    description: "Minimum jobwork value"
+    
+  - name: max_value
+    type: number
+    required: false
+    description: "Maximum jobwork value"
+    
+  - name: city
+    type: string
+    required: false
+    description: "Filter by supplier city"
+    
+  - name: state
+    type: string
+    required: false
+    description: "Filter by supplier state"
+    
+  - name: delivery_start_date
+    type: date
+    required: false
+    description: "Filter by delivery date range start"
+    
+  - name: delivery_end_date
+    type: date
+    required: false
+    description: "Filter by delivery date range end"
+
+output_format: table
+
+tags:
+  - overdue_analysis
+  - delivery_delays
+  - aging_analysis
+  - follow_up
+  - priority_management
+  - supplier_accountability
+  - operations
+
+examples:
+  - "Show all overdue jobworks"
+  - "Critical delay analysis for this month"
+  - "High priority overdue items"
+  - "Overdue jobworks for Kumar Textiles"
+  - "Show jobworks delayed by more than 30 days"
+  - "Overdue analysis by supplier city"
+  - "High value overdue jobworks"
+  - "Follow-up priority list for operations team"
+  - "Aging analysis for cutting department"
+  - "Overdue jobworks with financial impact"
